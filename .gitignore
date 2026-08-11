@@ -13,3 +13,4 @@ renv/*
 *.rds
 *.rda
 .DS_Store
+.positai

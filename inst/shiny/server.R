@@ -1,35 +1,56 @@
-#
-# This is the server logic of a Shiny web application. You can run the
-# application by clicking 'Run App' above.
-#
-# Find out more about building applications with Shiny here:
-#
-#    http://shiny.rstudio.com/
-#
-
-library(shiny);library(ggplot2);library(dplyr);library(here);library(spatstat);library(tidyr);library(purrr);library(fuzzyjoin)
-library(devtools);library(ggpubr);library(viridis);library(waiter)
-#devtools::install_github("nateosher/DIMPLE",force=TRUE)
+library(shiny)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(waiter)
 library(DIMPLE)
 
-
-options(shiny.maxRequestSize = 100000*1024^2)
-
+options(shiny.maxRequestSize = 100000 * 1024^2)
 
 function(input, output, session) {
-  
+
   theme_set(
-    theme_bw() +
-      theme(legend.position = "right",legend.direction = "vertical", legend.box = "horizontal",plot.title=element_text(face="bold"),legend.title=element_text(face="bold",size=12),legend.text=element_text(face="bold",size=12),axis.text = element_text(face="bold",size=12),axis.title = element_text(face="bold",size=12),strip.text = element_text(face = "bold",size=12))
+    theme_minimal(base_size = 13) +
+      theme(
+        plot.title = element_text(face = "bold", colour = "#16324f", size = 15),
+        plot.subtitle = element_text(colour = "#6d7e8a", size = 11),
+        axis.title = element_text(face = "bold", colour = "#405a69"),
+        axis.text = element_text(colour = "#536d7c"),
+        legend.position = "right",
+        legend.title = element_text(face = "bold"),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(colour = "#e8eef2", linewidth = 0.35),
+        plot.background = element_rect(fill = "white", colour = NA),
+        panel.background = element_rect(fill = "white", colour = NA)
+      )
   )
-  
- 
-  experiment<-reactive({
-     
-    if(!is.null(input$file1)){
-      inFile <- input$file1 
+
+  get_cell_types <- function(exp) {
+    sort(unique(unlist(lapply(exp$mltplx_objects, function(obj) {
+      obj$mltplx_image$cell_types
+    }))))
+  }
+
+  has_quantile_dist <- function(exp) {
+    length(exp$mltplx_objects) > 0 &&
+      !is.null(exp$mltplx_objects[[1]]$quantile_dist)
+  }
+
+  metric_card <- function(label, value, detail = NULL) {
+    div(
+      class = "metric-card",
+      span(label, class = "metric-label"),
+      span(value, class = "metric-value"),
+      if (!is.null(detail)) span(detail, class = "metric-detail")
+    )
+  }
+
+  experiment <- reactive({
+    if (!is.null(input$file1)) {
+      inFile <- input$file1
       exp <- readRDS(inFile$datapath)
-    }else{
+    } else {
       req(input$exampledata)
 
       lung_url <- "https://github.com/bayesrx/DIMPLE/releases/download/lung-data-v1/lung_experiment_10_30_jsd_qdist.RDS"
@@ -70,8 +91,7 @@ function(input, output, session) {
 
           if (!identical(tolower(downloaded_sha256), tolower(lung_sha256))) {
             stop(
-              "The downloaded lung example data failed SHA-256 verification. ",
-              "Please try again.",
+              "The downloaded lung example data failed SHA-256 verification. Please try again.",
               call. = FALSE
             )
           }
@@ -85,321 +105,436 @@ function(input, output, session) {
 
       exp <- readRDS(lung_file)
     }
-  
-    updateSelectInput(session, inputId = 'slide_ids_to_plot', label = 'Select slide ids to plot', choices = exp$slide_ids, selected = "")
-    updateSelectInput(session, inputId = 'slide_ids_to_plot_mask', label = 'Select slide ids to plot', choices = exp$slide_ids, selected = "")
-    updateSelectInput(session, inputId = 'cell_types1', label = 'Select first cell type', choices = unique(unlist(lapply(lapply(exp$mltplx_objects,'[[',3),'[[',2))), selected = "")
-    updateSelectInput(session, inputId = 'cell_types2', label = 'Select second cell type', choices = unique(unlist(lapply(lapply(exp$mltplx_objects,'[[',3),'[[',2))), selected = "")
-    if(!is.null(exp$mltplx_objects[[1]]$quantile_dist)){
-     updateSelectInput(session, inputId = 'which_qdist', label = 'Which quantile?', choices = unique(paste0(unlist(lapply(lapply(lapply(lapply(exp$mltplx_objects,'[[',5),'[',5),'[[',1),'[',3))%>%na.omit(),"-",unlist(lapply(lapply(lapply(lapply(exp$mltplx_objects,'[[',5),'[',5),'[[',1),'[',4))%>%na.omit())), selected = "")
-     updateSelectInput(session, inputId = 'cell_types1_qdist', label = 'Select first cell type', choices = unique(unlist(lapply(lapply(exp$mltplx_objects,'[[',3),'[[',2))), selected = "")
-      updateSelectInput(session, inputId = 'cell_types2_qdist', label = 'Select second cell type', choices = unique(unlist(lapply(lapply(exp$mltplx_objects,'[[',3),'[[',2))), selected = "")
+
+    cell_types <- get_cell_types(exp)
+    first_slide <- if (length(exp$slide_ids) > 0) exp$slide_ids[[1]] else ""
+
+    updateSelectInput(
+      session,
+      inputId = "slide_ids_to_plot",
+      label = "Slide",
+      choices = exp$slide_ids,
+      selected = first_slide
+    )
+    updateSelectInput(
+      session,
+      inputId = "slide_ids_to_plot_mask",
+      label = "Slide",
+      choices = exp$slide_ids,
+      selected = first_slide
+    )
+
+    if (!is.null(exp$metadata)) {
+      metadata_names <- names(exp$metadata)
+      identifier_names <- intersect(c("slide_id", "patient_id"), metadata_names)
+      variable_choices <- setdiff(metadata_names, identifier_names)
+      if (length(variable_choices) == 0) variable_choices <- metadata_names
+
+      numeric_choices <- variable_choices[vapply(exp$metadata[variable_choices], is.numeric, logical(1))]
+      default_variable <- if (length(numeric_choices) > 0) numeric_choices[[1]] else variable_choices[[1]]
+
+      group_choices <- variable_choices[vapply(
+        exp$metadata[variable_choices],
+        function(x) {
+          n_unique <- dplyr::n_distinct(x[!is.na(x)])
+          is.factor(x) || is.character(x) || is.logical(x) || n_unique <= 10
+        },
+        logical(1)
+      )]
+
+      updateSelectInput(
+        session,
+        inputId = "cohort_variable",
+        label = "Variable",
+        choices = variable_choices,
+        selected = default_variable
+      )
+      updateSelectInput(
+        session,
+        inputId = "cohort_group",
+        label = "Optional stratification",
+        choices = c("None" = "", group_choices),
+        selected = ""
+      )
     }
-    
-    if(!is.null(exp$metadata)){
-      updateSelectInput(session, inputId = 'group_factor', label = 'Select covariate to test', choices = names(exp$metadata), selected = "")
-      
-      updateSelectInput(session, inputId = 'covariates', label = 'Select covariates to adjust for', choices = names(exp$metadata), selected = "")
-      
-      
-      
-    }
-    
-    if(is.null(exp$mltplx_objects[[1]]$qdist)&!is.null(exp$metadata)){
-      updateSelectInput(session, inputId = 'group_factor_qdist', label = 'Select covariate to test', choices = names(exp$metadata), selected = "")
-      updateSelectInput(session, inputId = 'covariates_qdist', label = 'Select covariates to adjust for', choices = names(exp$metadata), selected = "")
-    }
-    return(exp)
+
+    exp
   })
-  
-  # plot the message  
-  output$contents <- renderPrint({ 
-    experiment()
+
+  output$data_status <- renderUI({
+    exp <- experiment()
+    div(
+      class = "status-box",
+      strong("Experiment ready"),
+      tags$br(),
+      paste(format(length(exp$slide_ids), big.mark = ","), "slides loaded")
+    )
   })
-  
-  #point pattern plot 
-  ppplot<-function(){
+
+  output$experiment_overview <- renderUI({
+    exp <- experiment()
+    cell_types <- get_cell_types(exp)
+    total_cells <- sum(vapply(exp$mltplx_objects, function(obj) obj$mltplx_image$ppp$n, numeric(1)))
+    n_patients <- if (!is.null(exp$metadata) && "patient_id" %in% names(exp$metadata)) {
+      dplyr::n_distinct(exp$metadata$patient_id)
+    } else {
+      NA_integer_
+    }
+
+    div(
+      class = "metric-grid",
+      metric_card("Slides", format(length(exp$slide_ids), big.mark = ",")),
+      metric_card("Cells", format(total_cells, big.mark = ",")),
+      metric_card("Cell types", format(length(cell_types), big.mark = ",")),
+      metric_card(
+        if (is.na(n_patients)) "Metadata" else "Patients",
+        if (is.na(n_patients)) {
+          if (is.null(exp$metadata)) "None" else format(nrow(exp$metadata), big.mark = ",")
+        } else {
+          format(n_patients, big.mark = ",")
+        },
+        if (is.na(n_patients) && !is.null(exp$metadata)) "metadata rows" else NULL
+      )
+    )
+  })
+
+  ppplot <- function() {
     req(experiment())
     req(input$slide_ids_to_plot)
-    # if(input$y_n_quantile_mask=="Yes"){
-    #   req(experiment1())
-    #   req(input$slide_ids_to_plot)
-    #   qdist1<-filter_mltplx_objects(experiment(),input$slide_ids_to_plot)[[1]]$quantile_dist
-    #   p<-plot_quantile_mask(experiment(),qdist1$mask_type,cbind.data.frame(from=c(qdist1$quantiles[,3]),to=c(qdist1$quantiles[,4])),input$slide_ids_to_plot) 
-    # }else{
-      p<-plot_ppp(experiment(),input$slide_ids_to_plot)
-   # }
-    p
+    plot_ppp(experiment(), input$slide_ids_to_plot)
   }
-  
-  output$ppplot <- renderPlot({ 
+
+  output$ppplot <- renderPlot({
     ppplot()
   })
-  
-  experiment1 <- reactive({ 
-    req(experiment()) 
-    req(input$slide_ids_to_plot)
-    experiment<-experiment()
-    exp1<-filter_MltplxExp(experiment,input$slide_ids_to_plot)
-    updateSelectInput(session, inputId = 'cell_types_to_plot', label = 'Select cell types to plot intensities', choices = unique(unlist(lapply(lapply(exp1$mltplx_objects,'[[',3),'[[',2))), selected = "")
-    return(experiment)
-  })
-  
 
-  
-  #intensity plot  
-  #only make available cell types that are in the selected image
-  intensity_plot<-function(){
-    req(experiment1())
+  selected_experiment <- reactive({
+    req(experiment())
+    req(input$slide_ids_to_plot)
+    exp1 <- filter_MltplxExp(experiment(), input$slide_ids_to_plot)
+    cell_types <- get_cell_types(exp1)
+    default_types <- if (length(cell_types) > 0) cell_types[[1]] else character(0)
+
+    updateSelectInput(
+      session,
+      inputId = "cell_types_to_plot",
+      label = "Cell types for intensity surface",
+      choices = cell_types,
+      selected = default_types
+    )
+
+    exp1
+  })
+
+  intensity_plot <- function() {
+    req(selected_experiment())
     req(input$slide_ids_to_plot)
     req(input$cell_types_to_plot)
-    plot_intensity_surface(experiment(),types=input$cell_types_to_plot,slide_ids=input$slide_ids_to_plot)
+    plot_intensity_surface(
+      experiment(),
+      types = input$cell_types_to_plot,
+      slide_ids = input$slide_ids_to_plot
+    )
   }
-  
-  output$intensity_plot <- renderPlot({ 
+
+  output$intensity_plot <- renderPlot({
     intensity_plot()
- })
-  
-  dm_plot<-function(){
+  })
+
+  dm_plot <- function() {
     req(experiment())
     req(input$slide_ids_to_plot)
-    #req(input$y_n_qdist)
-    #if(input$y_n_qdist=="Yes"){
-   #   plot_qdist(experiment(),input$slide_ids_to_plot,mode=input$dm_plot_mode)
-   # }else{
-      plot_dist_matrix(experiment(),input$slide_ids_to_plot,mode=input$dm_plot_mode)
-   # }
+    req(input$dm_plot_mode)
+    plot_dist_matrix(
+      experiment(),
+      input$slide_ids_to_plot,
+      mode = input$dm_plot_mode
+    )
   }
-  
-  output$dm_plot <- renderPlot({ 
 
+  output$dm_plot <- renderPlot({
     dm_plot()
   })
-  
-  
+
   output$save_pp <- downloadHandler(
-    #filename="save.png",
-    filename = "ppplot.pdf" , # variable with filename
+    filename = "cell_locations.pdf",
     content = function(file) {
-      #ggsave(ppplot(), filename = file)
-    
-     ggsave(file,plot=ppplot()) 
-    
-    })
-  
-  output$save_int <- downloadHandler(
-    #filename="save.png",
-    filename = "intensities.pdf" , # variable with filename
-    content = function(file) {
-      #ggsave(ppplot(), filename = file)
-      ggsave(file,plot=intensity_plot())
-    })
-  
-  output$save_dm <- downloadHandler(
-    #filename="save.png",
-    filename = "dm.pdf" , # variable with filename
-    content = function(file) {
-      #ggsave(ppplot(), filename = file)
-      ggsave(file,plot=dm_plot())
-    })
-
-  agg_list<-list(mean,median,max,min)
-  names(agg_list)<-c("mean","median","max","min")
-  
-  pairwise_group_heat<-function(){
-    req(experiment())
-    req(experiment()$metadata)
-   # req(input$strat_qdist)
-    req(input$group_factor)
-    adjust<-ifelse(input$adjust_counts=="Yes",TRUE,FALSE)
-   # if(input$strat_qdist=="Yes"){
-    #  req(input$which_qdist)
-
-   #   lmdist<-lm_qdist(exp,input$group_factor,interval=input$which_qdist,agg_fun = agg_list[[input$agg]],covariates = input$covariates,adjust_counts = adjust)
-
-   # }else{
-    
-    lmdist<-lm_dist(experiment(),input$group_factor,agg_fun = agg_list[[input$agg]],covariates = input$covariates,adjust_counts = adjust)
-    
-    
-   #   }
-    
-    plot_dist_regression_heatmap(lmdist,p_val_col = "p.adj")
-  }
-  
-  output$pairwise_group_heat <- renderPlot({ 
-    pairwise_group_heat()
-  })
-  
-  output$save_heat <- downloadHandler(
-    #filename="save.png",
-    filename = "heatmap.pdf" , # variable with filename
-    content = function(file) {
-      #ggsave(ppplot(), filename = file)
-      #png(file)
-      ggsave(file,plot=pairwise_group_heat())
-      #dev.off()
-    })
-
-  
-  # output$boxplot <- renderPlot({ 
-  #   req(experiment())
-  #   req(input$cell_types1)
-  #   req(input$cell_types2)
-  #   patient_boxplots(experiment(),input$cell_types1,input$cell_types2,grouping_var=input$group_factor)
-  # })
-  
-  group_boxplot_or_cont<-function(){
-    req(experiment())
-    req(input$cell_types1)
-    req(input$cell_types2)
-    #req(input$group_factor)
-    if(input$var_type=="categorical"){
-      plot_dist_boxplots(experiment(),input$cell_types1,input$cell_types2,grouping_var=input$group_factor)
-    }else{
-      plot_dist_scatter(experiment(),input$cell_types1,input$cell_types2,cont_var=input$group_factor,agg_fun=NULL,smooth="loess")
+      ggsave(file, plot = ppplot(), width = 8, height = 6)
     }
-    
-  }
-  
-  output$group_boxplot_or_cont <- renderPlot({ 
-    group_boxplot_or_cont()
-  })
-  
-  
-  output$save_scatter <- downloadHandler(
-    #filename="save.png",
-    filename = "scatter.pdf" , # variable with filename
+  )
+
+  output$save_int <- downloadHandler(
+    filename = "intensity_surface.pdf",
     content = function(file) {
-      #ggsave(ppplot(), filename = file)
-      ggsave(file,plot=group_boxplot_or_cont())
-    })
-  
-  url <- a("DIMPLE Github", href="https://github.com/nateosher/DIMPLE")
+      ggsave(file, plot = intensity_plot(), width = 8, height = 6)
+    }
+  )
+
+  output$save_dm <- downloadHandler(
+    filename = "distance_matrix.pdf",
+    content = function(file) {
+      ggsave(file, plot = dm_plot(), width = 8, height = 6)
+    }
+  )
+
+  cohort_data <- reactive({
+    exp <- experiment()
+    req(exp$metadata)
+
+    metadata <- as.data.frame(exp$metadata)
+    if ("patient_id" %in% names(metadata)) {
+      metadata <- dplyr::distinct(metadata, patient_id, .keep_all = TRUE)
+    }
+    metadata
+  })
+
+  output$cohort_notice <- renderUI({
+    exp <- experiment()
+    if (is.null(exp$metadata)) {
+      div(
+        class = "notice",
+        strong("No cohort metadata is attached to this experiment."),
+        tags$br(),
+        "The image exploration tab is still available, but cohort summaries require metadata."
+      )
+    }
+  })
+
+  output$cohort_overview <- renderUI({
+    exp <- experiment()
+    req(exp$metadata)
+    cohort <- cohort_data()
+    n_patients <- if ("patient_id" %in% names(exp$metadata)) {
+      dplyr::n_distinct(exp$metadata$patient_id)
+    } else {
+      nrow(cohort)
+    }
+    missing_cells <- sum(is.na(cohort))
+    total_cells <- nrow(cohort) * ncol(cohort)
+    completeness <- if (total_cells > 0) 100 * (1 - missing_cells / total_cells) else 100
+
+    div(
+      class = "metric-grid",
+      metric_card("Patients", format(n_patients, big.mark = ","), if (!"patient_id" %in% names(exp$metadata)) "metadata records" else NULL),
+      metric_card("Slides", format(length(exp$slide_ids), big.mark = ",")),
+      metric_card("Metadata fields", format(ncol(exp$metadata), big.mark = ",")),
+      metric_card("Completeness", paste0(format(round(completeness, 1), nsmall = 1), "%"), "non-missing patient-level values")
+    )
+  })
+
+  output$metadata_preview <- renderTable({
+    exp <- experiment()
+    req(exp$metadata)
+    utils::head(exp$metadata, 8)
+  }, striped = FALSE, bordered = FALSE, spacing = "s", rownames = FALSE)
+
+  output$cohort_variable_summary <- renderTable({
+    data <- cohort_data()
+    req(input$cohort_variable)
+    req(input$cohort_variable %in% names(data))
+
+    x <- data[[input$cohort_variable]]
+    n_nonmissing <- sum(!is.na(x))
+    n_missing <- sum(is.na(x))
+
+    if (is.numeric(x)) {
+      if (n_nonmissing == 0) {
+        return(data.frame(Statistic = c("Non-missing", "Missing"), Value = c(0, n_missing)))
+      }
+
+      q <- stats::quantile(x, probs = c(0.25, 0.75), na.rm = TRUE, names = FALSE)
+      values <- c(
+        n_nonmissing,
+        n_missing,
+        mean(x, na.rm = TRUE),
+        stats::sd(x, na.rm = TRUE),
+        stats::median(x, na.rm = TRUE),
+        q[[1]],
+        q[[2]],
+        min(x, na.rm = TRUE),
+        max(x, na.rm = TRUE)
+      )
+
+      data.frame(
+        Statistic = c("Non-missing", "Missing", "Mean", "SD", "Median", "Q1", "Q3", "Min", "Max"),
+        Value = c(
+          as.character(values[1:2]),
+          format(round(values[3:9], 2), trim = TRUE, scientific = FALSE)
+        ),
+        check.names = FALSE
+      )
+    } else {
+      x_chr <- as.character(x)
+      x_chr[is.na(x_chr) | x_chr == ""] <- "Missing"
+      counts <- sort(table(x_chr), decreasing = TRUE)
+      data.frame(
+        Level = names(counts),
+        N = as.integer(counts),
+        Percent = paste0(round(100 * as.integer(counts) / sum(counts), 1), "%"),
+        check.names = FALSE
+      )
+    }
+  }, striped = FALSE, bordered = FALSE, spacing = "s", rownames = FALSE)
+
+  cohort_plot <- function() {
+    data <- cohort_data()
+    req(input$cohort_variable)
+    req(input$cohort_variable %in% names(data))
+
+    variable <- input$cohort_variable
+    group <- input$cohort_group
+    x <- data[[variable]]
+    group_is_valid <- !is.null(group) && nzchar(group) && group %in% names(data) && group != variable
+
+    if (is.numeric(x)) {
+      plot_df <- data.frame(value = x)
+
+      if (group_is_valid) {
+        plot_df$group <- as.factor(data[[group]])
+        plot_df <- plot_df[!is.na(plot_df$value) & !is.na(plot_df$group), , drop = FALSE]
+
+        ggplot(plot_df, aes(x = group, y = value, fill = group)) +
+          geom_boxplot(width = 0.58, alpha = 0.82, outlier.shape = NA) +
+          geom_jitter(width = 0.11, alpha = 0.35, size = 1.8, colour = "#294656") +
+          scale_fill_viridis_d(option = "C", end = 0.82) +
+          labs(
+            title = paste(variable, "by", group),
+            subtitle = paste(format(nrow(plot_df), big.mark = ","), "patient-level observations"),
+            x = group,
+            y = variable
+          ) +
+          guides(fill = "none")
+      } else {
+        plot_df$cohort <- factor("All patients")
+        plot_df <- plot_df[!is.na(plot_df$value), , drop = FALSE]
+
+        ggplot(plot_df, aes(x = cohort, y = value)) +
+          geom_boxplot(width = 0.34, fill = "#4f889d", colour = "#244b60", alpha = 0.86, outlier.shape = NA) +
+          geom_jitter(width = 0.08, alpha = 0.38, size = 1.9, colour = "#294656") +
+          labs(
+            title = variable,
+            subtitle = paste(format(nrow(plot_df), big.mark = ","), "patient-level observations"),
+            x = NULL,
+            y = variable
+          )
+      }
+    } else {
+      plot_df <- data.frame(category = as.character(x), stringsAsFactors = FALSE)
+      plot_df$category[is.na(plot_df$category) | plot_df$category == ""] <- "Missing"
+
+      if (group_is_valid) {
+        plot_df$group <- as.factor(data[[group]])
+        plot_df <- plot_df[!is.na(plot_df$group), , drop = FALSE]
+
+        ggplot(plot_df, aes(x = category, fill = group)) +
+          geom_bar(position = "dodge", width = 0.72) +
+          scale_fill_viridis_d(option = "C", end = 0.82) +
+          coord_flip() +
+          labs(
+            title = paste(variable, "by", group),
+            subtitle = "Patient-level counts",
+            x = NULL,
+            y = "Patients",
+            fill = group
+          )
+      } else {
+        counts <- as.data.frame(table(plot_df$category), stringsAsFactors = FALSE)
+        names(counts) <- c("category", "n")
+        counts$category <- reorder(counts$category, counts$n)
+
+        ggplot(counts, aes(x = category, y = n)) +
+          geom_col(width = 0.7, fill = "#4f889d") +
+          geom_text(aes(label = n), hjust = -0.18, size = 3.7, colour = "#405a69") +
+          coord_flip(clip = "off") +
+          scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+          labs(
+            title = variable,
+            subtitle = "Patient-level counts",
+            x = NULL,
+            y = "Patients"
+          )
+      }
+    }
+  }
+
+  output$cohort_plot <- renderPlot({
+    cohort_plot()
+  })
+
+  output$save_cohort_plot <- downloadHandler(
+    filename = "cohort_summary.pdf",
+    content = function(file) {
+      ggsave(file, plot = cohort_plot(), width = 8, height = 6)
+    }
+  )
+
+  output$quantile_notice <- renderUI({
+    exp <- experiment()
+    if (!has_quantile_dist(exp)) {
+      div(
+        class = "notice",
+        "This experiment does not contain quantile-specific distance information."
+      )
+    }
+  })
+
+  quantile_mask_plot <- function() {
+    exp <- experiment()
+    req(input$slide_ids_to_plot_mask)
+    validate(need(has_quantile_dist(exp), "Quantile-specific distances are not available for this experiment."))
+
+    qdist1 <- filter_MltplxExp(exp, input$slide_ids_to_plot_mask)$mltplx_objects[[1]]$quantile_dist
+    plot_quantile_intensity_surface(
+      exp,
+      qdist1$mask_type,
+      cbind.data.frame(from = c(qdist1$quantiles[, 3]), to = c(qdist1$quantiles[, 4])),
+      input$slide_ids_to_plot_mask
+    )
+  }
+
+  output$quantile_mask_plot <- renderPlot({
+    quantile_mask_plot()
+  })
+
+  output$save_mask <- downloadHandler(
+    filename = "quantile_mask.pdf",
+    content = function(file) {
+      ggsave(file, plot = quantile_mask_plot(), width = 8, height = 6)
+    }
+  )
+
+  quantile_dm_plot <- function() {
+    exp <- experiment()
+    req(input$slide_ids_to_plot_mask)
+    req(input$dm_plot_mode_qdist)
+    validate(need(has_quantile_dist(exp), "Quantile-specific distances are not available for this experiment."))
+
+    plot_qdist_matrix(
+      exp,
+      input$slide_ids_to_plot_mask,
+      mode = input$dm_plot_mode_qdist
+    )
+  }
+
+  output$quantile_dm_plot <- renderPlot({
+    quantile_dm_plot()
+  })
+
+  output$save_qdm <- downloadHandler(
+    filename = "quantile_distance_matrix.pdf",
+    content = function(file) {
+      ggsave(file, plot = quantile_dm_plot(), width = 8, height = 6)
+    }
+  )
+
+  url <- a(
+    "DIMPLE on GitHub",
+    href = "https://github.com/bayesrx/DIMPLE",
+    target = "_blank",
+    rel = "noopener noreferrer"
+  )
+
   output$tab <- renderUI({
     tagList(url)
   })
-
-  # experiment2 <- reactive({ 
-  #   req(experiment()) 
-  #   req(input$slide_ids_to_plot_mask)
-  #   experiment<-experiment()
-  #   exp1<-filter_MltplxExp(experiment,input$slide_ids_to_plot_mask)
-  #   #updateSelectInput(session, inputId = 'cell_types_to_plot', label = 'Select cell types to plot intensities', choices = unique(unlist(lapply(lapply(exp1$mltplx_objects,'[[',3),'[[',2))), selected = "")
-  #   return(experiment)
-  # })
-  
-quantile_mask_plot<-function(){
-  req(input$slide_ids_to_plot_mask)    
-  req(experiment())
-      
-      qdist1<-filter_MltplxExp(experiment(),input$slide_ids_to_plot_mask)$mltplx_objects[[1]]$quantile_dist
-      plot_quantile_intensity_surface(experiment(),qdist1$mask_type,cbind.data.frame(from=c(qdist1$quantiles[,3]),to=c(qdist1$quantiles[,4])),input$slide_ids_to_plot_mask)
-    
-    
-  }
-
-output$quantile_mask_plot <- renderPlot({ 
-  quantile_mask_plot()
-})
-
-
-  
-  output$save_mask <- downloadHandler(
-    #filename="save.png",
-    filename = "quantile_mask.pdf" , # variable with filename
-    content = function(file) {
-      #ggsave(ppplot(), filename = file)
-      #png(file)
-      ggsave(file,plot=quantile_mask_plot())
-      #dev.off()
-    })
-  
-  
-  
-  
-  quantile_dm_plot<-function(){
-    req(experiment())
-    req(input$slide_ids_to_plot_mask)  
-    plot_qdist_matrix(experiment(),input$slide_ids_to_plot_mask,mode=input$dm_plot_mode_qdist)
-    
-  }
-  
-  output$quantile_dm_plot <- renderPlot({ 
-    quantile_dm_plot()
-  })
-  
-  
-  
-  output$save_qdm <- downloadHandler(
-    #filename="save.png",
-    filename = "quantile_dm.pdf" , # variable with filename
-    content = function(file) {
-      #ggsave(ppplot(), filename = file)
-      #png(file)
-      ggsave(file,plot=quantile_dm_plot())
-      #dev.off()
-    })
-  
-  
-  pairwise_group_heat_qdist<-function(){
-    req(experiment())
-    req(experiment()$metadata)
-    req(input$group_factor_qdist)
-    adjust<-ifelse(input$adjust_counts_qdist=="Yes",TRUE,FALSE)
-    req(input$which_qdist)
-    
-    lmdist<-lm_qdist(exp,input$group_factor_qdist,interval=input$which_qdist,agg_fun = agg_list[[input$agg_qdist]],covariates = input$covariates_qdist,adjust_counts = adjust)
-    
-    plot_dist_regression_heatmap(lmdist,p_val_col = "p.adj")
-  }
-  
-  output$pairwise_group_heat_qdist <- renderPlot({ 
-    pairwise_group_heat_qdist()
-  })
-  
-  output$save_heat_qdist <- downloadHandler(
-    #filename="save.png",
-    filename = "heatmap_qdist.pdf" , # variable with filename
-    content = function(file) {
-      #ggsave(ppplot(), filename = file)
-      #png(file)
-      ggsave(file,plot=pairwise_group_heat_qdist())
-      #dev.off()
-    })
-  
-  group_boxplot_or_cont_qdist<-function(){
-    req(experiment())
-    req(input$cell_types1_qdist)
-    req(input$cell_types2_qdist)
-    req(input$group_factor_qdist)
-    if(input$var_type_qdist=="categorical"){
-      plot_qdist_boxplots(experiment(),input$cell_types1_qdist,input$cell_types2_qdist,grouping_var=input$group_factor_qdist)
-    }else{
-      plot_qdist_scatter(experiment(),input$cell_types1_qdist,input$cell_types2_qdist,cont_var=input$group_factor_qdist,agg_fun=NULL,smooth="loess")
-    }
-
-  }
-
-  output$group_boxplot_or_cont_qdist <- renderPlot({
-    group_boxplot_or_cont_qdist()
-  })
-
-
-  output$save_scatter_qdist <- downloadHandler(
-    #filename="save.png",
-    filename = "scatter_qdist.pdf" , # variable with filename
-    content = function(file) {
-      #ggsave(ppplot(), filename = file)
-      ggsave(file,plot=group_boxplot_or_cont_qdist())
-    })
-  
 }
-
-
-
-
-
-
-
-
