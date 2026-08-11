@@ -1,0 +1,110 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# DIMPLE: **D**istance based **I**nference for **M**ultip**L**ex imaging **E**xperiments
+
+
+<!-- badges: start -->
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![CRAN status](https://www.r-pkg.org/badges/version/DIMPLE)](https://CRAN.R-project.org/package=DIMPLE)
+[![codecov](https://codecov.io/gh/nateosher/DIMPLE/branch/master/graph/badge.svg?token=87UMWJ42XU)](https://codecov.io/gh/nateosher/DIMPLE)
+<!-- badges: end -->
+
+The goal of DIMPLE is to provide tools and infrastructure to facilitate the manipulation, exploration, and modeling of multiplex imaging data.
+
+## Installation
+
+You can install the development version of DIMPLE from [GitHub](https://github.com/) with:
+
+``` r
+# install.packages("devtools")
+devtools::install_github("nateosher/DIMPLE")
+```
+
+To install with vignettes (which we recommend), use the command:
+``` r
+# install.packages("devtools")
+devtools::install_github("nateosher/DIMPLE", build_vignettes = TRUE)
+```
+
+## Example
+
+Suppose we're interested in exploring the lung cancer data from the [`VectraPolarisData`](https://bioconductor.org/packages/release/data/experiment/html/VectraPolarisData.html) package. Assuming you've already installed that package, we can build a `MltplxExperiment` object, the core of `DIMPLE`, from the data as follows:
+
+```{r}
+library(DIMPLE)
+library(tidyverse)
+lung_data = VectraPolarisData::HumanLungCancerV3()
+
+# Get the x coordinates for the cells
+cell_x_coords = SpatialExperiment::spatialCoords(lung_data)[,1] %>% as.numeric()
+# Get the y coordinates for the cells
+cell_y_coords = SpatialExperiment::spatialCoords(lung_data)[,2] %>% as.numeric()
+# Get the patient ids for the slides
+patient_ids = lung_data$slide_id
+# Get the slide ids for the slides
+slide_ids = lung_data$sample_id
+
+# Map phenotypes to character vector - there are more efficient ways to do this,
+# but this way is the most legible
+test_n = length(lung_data$phenotype_cd14)
+tictoc::tic()
+cell_marks = tibble(
+  cd_14 = lung_data$phenotype_cd14[1:test_n] == "CD14+",
+  cd_19 = lung_data$phenotype_cd19[1:test_n] == "CD19+",
+  cd_4 = lung_data$phenotype_cd4[1:test_n] == "CD4+",
+  cd_8 = lung_data$phenotype_cd8[1:test_n] == "CD8+",
+  ck = lung_data$phenotype_ck[1:test_n] == "CK+",
+  other = lung_data$phenotype_other[1:test_n] == "Other+"
+) %>%
+  as.matrix() %>%
+  (\(m){
+    m %*% 1:6
+  }) %>%
+  map_chr(\(x) c(NA, "CD14", "CD19", "CD4", "CD8", "CK", "Other")[x + 1])
+
+na_marks = which(is.na(cell_marks))
+
+na_marks = which(is.na(cell_marks))
+cell_x_coords = cell_x_coords[-na_marks]
+cell_y_coords = cell_y_coords[-na_marks]
+patient_ids = patient_ids[-na_marks]
+slide_ids = slide_ids[-na_marks]
+cell_marks = cell_marks[-na_marks]
+
+lung_experiment = DIMPLE::new_MltplxExperiment(
+  x = cell_x_coords,
+  y = cell_y_coords,
+  marks = cell_marks,
+  slide_id = slide_ids
+)
+
+lung_experiment
+```
+
+This object can be indexed like a list- each entry is of class `MltplxObject`, and stores data about a particular biopsy:
+
+```{r }
+lung_experiment[[1]]
+```
+
+Using the implemented generic functions, this allows for quick inspection of a given biopsy:
+
+```{r example_plot}
+plot(lung_experiment[[1]])
+```
+
+To learn more about these data structures and how to utilize them for exploration, check out the `mltplx-experiment` vignette. `DIMPLE` also provides functions for simulating Multiplex Imaging data- an overview of this functionality can be found in the `simulations` vignette
+

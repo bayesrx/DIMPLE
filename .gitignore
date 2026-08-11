@@ -1,0 +1,12 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+cran-comments.md
+inst/doc
+scratch
+/doc/
+/Meta/
+.Rprofile
+renv/*

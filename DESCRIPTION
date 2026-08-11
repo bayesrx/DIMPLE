@@ -1,0 +1,35 @@
+Package: DIMPLE
+Title: A package for working with Multiplex Imaging data
+Version: 1.0.0
+Authors@R: 
+    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"),
+           comment = c(ORCID = "YOUR-ORCID-ID"))
+Description: What the package does (one paragraph).
+License: MIT + file LICENSE
+Imports:
+    dplyr,
+    magrittr,
+    purrr,
+    tibble,
+    ggplot2,
+    fuzzyjoin,
+    pals,
+    broom,
+    spatstat.explore,
+    spatstat.geom,
+    tidyr,
+    RColorBrewer,
+    viridis,
+    furrr,
+    progressr,
+    ggnetwork
+Suggests: 
+    covr,
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3
+VignetteBuilder: knitr

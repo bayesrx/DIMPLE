@@ -1,0 +1,11 @@
+^renv$
+^renv\.lock$
+^DistDist\.Rproj$
+^\.Rproj\.user$
+^LICENSE\.md$
+^README\.Rmd$
+^cran-comments\.md$
+^codecov\.yml$
+^\.github$
+^doc$
+^Meta$
