@@ -10,3 +10,6 @@ scratch
 /Meta/
 .Rprofile
 renv/*
+*.rds
+*.rda
+.DS_Store

@@ -22,7 +22,17 @@ Imports:
     viridis,
     furrr,
     progressr,
-    ggnetwork
+    ggnetwork,
+    igraph,
+    stringr,
+    shiny,
+    shinythemes,
+    waiter,
+    shinyjs,
+    here,
+    spatstat,
+    devtools,
+    ggpubr
 Suggests: 
     covr,
     knitr,
