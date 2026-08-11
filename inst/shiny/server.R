@@ -31,7 +31,59 @@ function(input, output, session) {
       exp <- readRDS(inFile$datapath)
     }else{
       req(input$exampledata)
-      exp<-readRDS("lung_experiment_10_30_jsd_qdist.RDS")
+
+      lung_url <- "https://github.com/bayesrx/DIMPLE/releases/download/lung-data-v1/lung_experiment_10_30_jsd_qdist.RDS"
+      lung_sha256 <- "75a4beaac18d0dc0789507b491061d4a270a674e76cf9c34b6eea8f7c72e583b"
+      cache_dir <- file.path(tools::R_user_dir("DIMPLE", which = "cache"), "shiny")
+      lung_file <- file.path(cache_dir, "lung_experiment_10_30_jsd_qdist.RDS")
+
+      if (!file.exists(lung_file)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+        temp_file <- tempfile(pattern = "dimple-lung-", tmpdir = cache_dir, fileext = ".RDS")
+        on.exit(unlink(temp_file), add = TRUE)
+
+        download_error <- NULL
+        shiny::withProgress(message = "Downloading lung cancer example data...", value = 0, {
+          shiny::incProgress(0.1, detail = "Downloading 121 MB data file")
+          status <- tryCatch(
+            utils::download.file(lung_url, temp_file, mode = "wb", quiet = TRUE),
+            error = function(e) {
+              download_error <<- conditionMessage(e)
+              NA_integer_
+            }
+          )
+
+          if (is.na(status) || status != 0L || !file.exists(temp_file)) {
+            if (is.null(download_error)) {
+              download_error <- paste0("download.file returned status ", status)
+            }
+            stop("Unable to download the lung example data: ", download_error, call. = FALSE)
+          }
+
+          shiny::incProgress(0.8, detail = "Verifying downloaded data")
+          downloaded_sha256 <- digest::digest(
+            temp_file,
+            algo = "sha256",
+            serialize = FALSE,
+            file = TRUE
+          )
+
+          if (!identical(tolower(downloaded_sha256), tolower(lung_sha256))) {
+            stop(
+              "The downloaded lung example data failed SHA-256 verification. ",
+              "Please try again.",
+              call. = FALSE
+            )
+          }
+
+          if (!file.rename(temp_file, lung_file)) {
+            stop("Unable to move the downloaded lung example data into the cache.", call. = FALSE)
+          }
+          shiny::incProgress(0.1, detail = "Done")
+        })
+      }
+
+      exp <- readRDS(lung_file)
     }
   
     updateSelectInput(session, inputId = 'slide_ids_to_plot', label = 'Select slide ids to plot', choices = exp$slide_ids, selected = "")

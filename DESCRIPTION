@@ -32,7 +32,8 @@ Imports:
     here,
     spatstat,
     devtools,
-    ggpubr
+    ggpubr,
+    digest
 Suggests: 
     covr,
     knitr,

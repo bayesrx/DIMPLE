@@ -11,3 +11,5 @@
 ^Meta$
 \.rds$
 \.rda$
+^\.positai$
+^\.claude$
