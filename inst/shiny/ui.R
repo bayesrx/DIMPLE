@@ -114,7 +114,7 @@ fluidPage(
         border-radius: 14px;
         background: white;
         box-shadow: 0 4px 18px rgba(37, 63, 80, 0.055);
-        overflow: hidden;
+        overflow: visible;
       }
       .dimple-card-header {
         padding: 18px 20px 12px 20px;
