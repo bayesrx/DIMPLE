@@ -805,7 +805,10 @@ function(input, output, session) {
     # quantile distances.
     if (identical(input$dm_plot_mode_qdist, "network")) {
       exp_to_plot$mltplx_objects <- lapply(exp_to_plot$mltplx_objects, function(obj) {
-        if (!is.null(obj$quantile_dist) &&
+        # Some slides store quantile_dist as atomic NA when the mask cell type
+        # is not present. Check that it is a list-like QuantileDist object
+        # before using `$`; otherwise leave that slide untouched.
+        if (is.list(obj$quantile_dist) &&
             !is.null(obj$quantile_dist$quantile_dist_array)) {
           qdist_arr <- obj$quantile_dist$quantile_dist_array
           qdist_arr[!is.finite(qdist_arr)] <- 0

@@ -600,47 +600,50 @@ fluidPage(
                 
                 div(
                     class = "team-member",
-                    tags$img(src = "maria.png", alt = "Maria Masotti"),
+                    tags$img(src = "maria.png", alt = "Maria Masotti, PhD"),
                     strong("Maria Masotti, PhD")
                 ),
                 
                 div(
                     class = "team-member",
-                    tags$img(src = "joel.png", alt = "Joel Eliason"),
-                    strong("Joel Eliason")
+                    tags$img(src = "joel.png", alt = "Joel Eliason, PhD"),
+                    strong("Joel Eliason, PhD")
                 ),
                 
                 div(
                     class = "team-member",
-                    tags$img(src = "veera.png", alt = "Veera Baladandayuthapani"),
+                    tags$img(src = "veera.png", alt = "Veera Baladandayuthapani, PhD"),
                     strong("Veera Baladandayuthapani, PhD")
                 ),
                 
                 div(
                     class = "team-member",
-                    tags$img(src = "nate.png", alt = "Nate Osher"),
-                    strong("Nate Osher")
+                    tags$img(src = "nate.png", alt = "Nate Osher, PhD"),
+                    strong("Nate Osher, PhD")
                 ),
                 
                 div(
                     class = "team-member",
-                    tags$img(src = "arvind.png", alt = "Arvind Rao"),
+                    tags$img(src = "arvind.png", alt = "Arvind Rao, PhD"),
                     strong("Arvind Rao, PhD")
                 ),
                 
                 div(
                     class = "team-member",
+                    tags$img(src = "mike.jpg", alt = "Michael Kleinsasser"),
                     strong("Michael Kleinsasser")
                 ),
                 
                 div(
                     class = "team-member",
-                    strong("Nick")
+                    tags$img(src = "nick.png", alt = "Nicholas Lesniak, PhD"),
+                    strong("Nicholas Lesniak, PhD")
                 ),
                 
                 div(
                     class = "team-member",
-                    strong("Andrew")
+                    tags$img(src = "andrew.jpg", alt = "Andrew Whiteman, PhD"),
+                    strong("Andrew Whiteman, PhD")
                 )
             )
         )
