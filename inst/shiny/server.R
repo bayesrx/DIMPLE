@@ -222,8 +222,27 @@ function(input, output, session) {
     req(experiment())
     req(input$slide_ids_to_plot)
     req(input$dm_plot_mode)
+
+    exp_to_plot <- experiment()
+
+    # igraph does not accept adjacency matrices containing NA/NaN values.
+    # For the network view, treat non-finite distances as missing edges by
+    # replacing them with zero in a temporary copy used only for plotting.
+    # The experiment object itself is not modified, and the heatmap continues
+    # to display the original distance matrix with missing values omitted.
+    if (identical(input$dm_plot_mode, "network")) {
+      exp_to_plot$mltplx_objects <- lapply(exp_to_plot$mltplx_objects, function(obj) {
+        if (!is.null(obj$mltplx_dist) && !is.null(obj$mltplx_dist$dist)) {
+          dist_mat <- obj$mltplx_dist$dist
+          dist_mat[!is.finite(dist_mat)] <- 0
+          obj$mltplx_dist$dist <- dist_mat
+        }
+        obj
+      })
+    }
+
     plot_dist_matrix(
-      experiment(),
+      exp_to_plot,
       input$slide_ids_to_plot,
       mode = input$dm_plot_mode
     )
