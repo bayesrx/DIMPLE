@@ -796,8 +796,27 @@ function(input, output, session) {
     req(input$dm_plot_mode_qdist)
     validate(need(has_quantile_dist(exp), "Quantile-specific distances are not available for this experiment."))
 
+    exp_to_plot <- exp
+
+    # The quantile network view builds an igraph object from each slice of the
+    # quantile distance array. igraph rejects adjacency matrices containing
+    # NA/NaN/Inf values, so treat those entries as missing edges in a temporary
+    # copy used only for network plotting. Heatmaps continue to use the original
+    # quantile distances.
+    if (identical(input$dm_plot_mode_qdist, "network")) {
+      exp_to_plot$mltplx_objects <- lapply(exp_to_plot$mltplx_objects, function(obj) {
+        if (!is.null(obj$quantile_dist) &&
+            !is.null(obj$quantile_dist$quantile_dist_array)) {
+          qdist_arr <- obj$quantile_dist$quantile_dist_array
+          qdist_arr[!is.finite(qdist_arr)] <- 0
+          obj$quantile_dist$quantile_dist_array <- qdist_arr
+        }
+        obj
+      })
+    }
+
     plot_qdist_matrix(
-      exp,
+      exp_to_plot,
       input$slide_ids_to_plot_mask,
       mode = input$dm_plot_mode_qdist
     )
