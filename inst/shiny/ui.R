@@ -324,24 +324,29 @@ fluidPage(
         column(
           width = 4,
           app_card(
-            "Load an experiment",
-            "Upload a DIMPLE MltplxExperiment or start with the public lung cancer example.",
-            fileInput(
-              "file1",
-              "MltplxExperiment (.RDS)",
-              accept = c(".RDS", ".rds")
-            ),
-            div(class = "upload-or", "or"),
-            actionButton(
-              "exampledata",
-              "Use lung cancer example",
-              class = "btn-primary btn-block"
-            ),
-            p(
-              "The example dataset is downloaded once from the DIMPLE GitHub release and cached locally.",
-              class = "helper-text"
-            ),
-            uiOutput("data_status")
+              "Load an experiment",
+              "Upload a DIMPLE MltplxExperiment or start with the public lung cancer example.",
+              h4("What is a MltplxExperiment?"),
+              p(
+                  "A MltplxExperiment is the core data object in the DIMPLE R package for organizing and analyzing multiplex imaging data across slides, including cell locations and types, spatial intensity and distance summaries, and associated patient or slide metadata. It uses the RDS binary format of R, and and can be loaded with readRDS('path/to/object.RDS').",
+                  class = "helper-text"
+              ),
+              fileInput(
+                  "file1",
+                  "MltplxExperiment (.RDS)",
+                  accept = c(".RDS", ".rds")
+              ),
+              div(class = "upload-or", "or"),
+              actionButton(
+                  "exampledata",
+                  "Use lung cancer example",
+                  class = "btn-primary btn-block"
+              ),
+              p(
+                  "The example dataset is downloaded once from the DIMPLE GitHub release and cached locally.",
+                  class = "helper-text"
+              ),
+              uiOutput("data_status")
           ),
           app_card(
             "Image controls",
