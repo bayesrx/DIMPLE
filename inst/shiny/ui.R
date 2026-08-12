@@ -441,6 +441,70 @@ fluidPage(
     ),
 
     tabPanel(
+      "Compute Distances",
+      p(
+        "Compute cell-type distance matrices for the loaded MltplxExperiment. For large experiments, this calculation may take several minutes; running DIMPLE locally is recommended for computationally intensive analyses.",
+        class = "section-intro"
+      ),
+      fluidRow(
+        column(
+          width = 4,
+          app_card(
+            "Distance settings",
+            "Choose how spatial intensity distributions should be compared.",
+            uiOutput("intensity_settings"),
+            selectInput(
+              "distance_metric",
+              "Distance metric",
+              choices = c(
+                "Jensen-Shannon distance" = "jsd",
+                "Correlation" = "cor"
+              ),
+              selected = "jsd"
+            ),
+            actionButton(
+              "compute_distances",
+              "Compute distance matrices",
+              class = "btn-primary btn-block"
+            ),
+            uiOutput("distance_compute_status")
+          ),
+          app_card(
+            "Export distances",
+            "Download the computed cell-type distances for use in your own analyses.",
+            downloadButton(
+              "download_distances",
+              "Download distances (.CSV)",
+              class = "btn btn-default btn-block"
+            )
+          )
+        ),
+        column(
+          width = 8,
+          app_card(
+            "Distance matrix preview",
+            "Preview the computed distance matrix for a selected slide.",
+            selectInput(
+              "distance_preview_slide",
+              "Slide",
+              choices = ""
+            ),
+            selectInput(
+              "distance_preview_mode",
+              "View",
+              choices = c(
+                "Heatmap" = "heatmap",
+                "Network" = "network"
+              ),
+              selected = "heatmap"
+            ),
+            plotOutput("computed_distance_plot", height = "500px")
+          )
+        )
+      )
+    ),
+
+    tabPanel(
       "Quantile Distances",
       p(
         "Inspect spatial patterns and distance matrices within quantile-defined tissue regions. This view remains descriptive and does not fit regression models.",

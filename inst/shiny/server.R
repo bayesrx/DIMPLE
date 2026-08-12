@@ -46,6 +46,17 @@ function(input, output, session) {
     )
   }
 
+  has_intensities <- function(exp) {
+    length(exp$mltplx_objects) > 0 &&
+      !is.null(exp$ps) &&
+      !is.null(exp$bw) &&
+      all(vapply(exp$mltplx_objects, function(obj) {
+        !is.null(obj$mltplx_intensity)
+      }, logical(1)))
+  }
+
+  computed_experiment <- reactiveVal(NULL)
+
   experiment <- reactive({
     if (!is.null(input$file1)) {
       inFile <- input$file1
@@ -465,6 +476,191 @@ function(input, output, session) {
     filename = "cohort_summary.pdf",
     content = function(file) {
       ggsave(file, plot = cohort_plot(), width = 8, height = 6)
+    }
+  )
+
+  observeEvent(experiment(), {
+    exp <- experiment()
+    computed_experiment(exp)
+
+    first_slide <- if (length(exp$slide_ids) > 0) exp$slide_ids[[1]] else ""
+    updateSelectInput(
+      session,
+      inputId = "distance_preview_slide",
+      label = "Slide",
+      choices = exp$slide_ids,
+      selected = first_slide
+    )
+  })
+
+  output$intensity_settings <- renderUI({
+    exp <- computed_experiment()
+    req(exp)
+
+    if (has_intensities(exp)) {
+      div(
+        class = "status-box",
+        strong("Intensity estimates available"),
+        tags$br(),
+        paste0("Pixel size: ", exp$ps, " · Bandwidth: ", exp$bw)
+      )
+    } else {
+      tagList(
+        div(
+          class = "notice",
+          "This experiment does not contain intensity estimates. They must be generated before distances can be computed."
+        ),
+        numericInput(
+          "distance_ps",
+          "Pixel size",
+          value = 10,
+          min = 1
+        ),
+        numericInput(
+          "distance_bw",
+          "Smoothing bandwidth",
+          value = 30,
+          min = 1
+        )
+      )
+    }
+  })
+
+  output$distance_compute_status <- renderUI({
+    exp <- computed_experiment()
+    req(exp)
+
+    if (is.null(exp$dist_metric_name)) {
+      div(
+        class = "notice",
+        "No distance matrices are currently available."
+      )
+    } else {
+      div(
+        class = "status-box",
+        strong("Distance matrices available"),
+        tags$br(),
+        paste("Metric:", exp$dist_metric_name)
+      )
+    }
+  })
+
+  observeEvent(input$compute_distances, {
+    exp <- computed_experiment()
+    req(exp)
+    req(input$distance_metric)
+
+    result <- tryCatch({
+      withProgress(
+        message = "Computing distance matrices...",
+        value = 0,
+        {
+          if (!has_intensities(exp)) {
+            req(input$distance_ps)
+            req(input$distance_bw)
+            incProgress(0.2, detail = "Estimating spatial intensities")
+            exp <- DIMPLE::update_intensity(
+              exp,
+              ps = input$distance_ps,
+              bw = input$distance_bw
+            )
+          }
+
+          incProgress(0.4, detail = "Computing pairwise distances")
+
+          if (identical(input$distance_metric, "jsd")) {
+            exp <- DIMPLE::update_dist(exp, jsd)
+          } else if (identical(input$distance_metric, "cor")) {
+            exp <- DIMPLE::update_dist(exp, cor)
+          } else {
+            stop("Unsupported distance metric.")
+          }
+
+          incProgress(0.4, detail = "Done")
+        }
+      )
+      exp
+    }, error = function(e) {
+      showNotification(
+        paste("Unable to compute distances:", conditionMessage(e)),
+        type = "error",
+        duration = NULL
+      )
+      NULL
+    })
+
+    if (!is.null(result)) {
+      computed_experiment(result)
+      showNotification(
+        "Distance matrices successfully computed.",
+        type = "message"
+      )
+    }
+  })
+
+  observe({
+    exp <- computed_experiment()
+    req(exp)
+
+    current_slide <- isolate(input$distance_preview_slide)
+    selected_slide <- if (!is.null(current_slide) && current_slide %in% exp$slide_ids) {
+      current_slide
+    } else if (length(exp$slide_ids) > 0) {
+      exp$slide_ids[[1]]
+    } else {
+      ""
+    }
+
+    updateSelectInput(
+      session,
+      inputId = "distance_preview_slide",
+      label = "Slide",
+      choices = exp$slide_ids,
+      selected = selected_slide
+    )
+  })
+
+  computed_distance_plot <- function() {
+    exp <- computed_experiment()
+    req(exp)
+    req(input$distance_preview_slide)
+    req(input$distance_preview_mode)
+    validate(need(
+      !is.null(exp$dist_metric_name),
+      "Compute distance matrices to preview them here."
+    ))
+
+    plots <- DIMPLE::plot_dist_matrix(
+      exp,
+      input$distance_preview_slide,
+      mode = input$distance_preview_mode
+    )
+
+    if (is.list(plots) && length(plots) == 1) plots[[1]] else plots
+  }
+
+  output$computed_distance_plot <- renderPlot({
+    computed_distance_plot()
+  })
+
+  output$download_distances <- downloadHandler(
+    filename = function() {
+      paste0("DIMPLE_distances_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      exp <- computed_experiment()
+      req(exp)
+      validate(need(
+        !is.null(exp$dist_metric_name),
+        "No distance matrices are available."
+      ))
+
+      distances <- DIMPLE::dist_to_df(
+        exp,
+        reduce_symmetric = TRUE
+      )
+
+      utils::write.csv(distances, file, row.names = FALSE)
     }
   )
 
