@@ -29,10 +29,6 @@ Imports:
     shinythemes,
     waiter,
     shinyjs,
-    here,
-    spatstat,
-    devtools,
-    ggpubr,
     digest
 Suggests: 
     covr,

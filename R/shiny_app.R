@@ -24,10 +24,7 @@ shiny_app <- function(...) {
     shinythemes = requireNamespace("shinythemes", quietly = TRUE),
     waiter = requireNamespace("waiter", quietly = TRUE),
     shinyjs = requireNamespace("shinyjs", quietly = TRUE),
-    here = requireNamespace("here", quietly = TRUE),
-    spatstat = requireNamespace("spatstat", quietly = TRUE),
-    devtools = requireNamespace("devtools", quietly = TRUE),
-    ggpubr = requireNamespace("ggpubr", quietly = TRUE)
+    digest = requireNamespace("digest", quietly = TRUE)
   )
 
   if (!all(app_dependencies)) {
