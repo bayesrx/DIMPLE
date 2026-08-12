@@ -14,3 +14,4 @@ renv/*
 *.rda
 .DS_Store
 .positai
+inst/shiny/rsconnect/*
