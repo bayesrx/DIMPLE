@@ -319,7 +319,7 @@ fluidPage(
     id = "main_tabs",
 
     tabPanel(
-      "Explore Images",
+      "Explore Spatial Cell Patterns",
       fluidRow(
         column(
           width = 4,
@@ -394,7 +394,7 @@ fluidPage(
     tabPanel(
       "Cohort Summary",
       p(
-        "Explore the attached patient metadata descriptively. This section intentionally focuses on cohort composition and distributions rather than regression modeling.",
+        "Compare pairwise cell-type distances across cohort subgroups defined by the metadata attached to the experiment.",
         class = "section-intro"
       ),
       uiOutput("cohort_notice"),
@@ -403,30 +403,34 @@ fluidPage(
         column(
           width = 4,
           app_card(
-            "Choose a cohort variable",
-            "Numeric variables are shown with a box plot; categorical variables are shown as counts.",
-            selectInput("cohort_variable", "Variable", choices = ""),
+            "Choose a cell-type pair",
+            "Select the pairwise distance to summarize and a metadata variable for stratification.",
+            selectInput(
+              "cohort_pair",
+              "Cell-type pair",
+              choices = ""
+            ),
             selectInput(
               "cohort_group",
-              "Optional stratification",
+              "Stratify by",
               choices = c("None" = "")
             ),
             p(
-              "When patient_id is available, plots and summaries use one record per patient to avoid counting patients multiple times across slides.",
+              "When patient_id is available, distances from multiple slides are averaged within patient before plotting to avoid counting the same patient multiple times.",
               class = "helper-text"
             )
           ),
           app_card(
-            "Variable summary",
-            "A compact descriptive summary of the selected cohort variable.",
-            div(class = "table-scroll", tableOutput("cohort_variable_summary"))
+            "Distance summary",
+            "Summary statistics for the selected pair, overall or within the chosen cohort strata.",
+            div(class = "table-scroll", tableOutput("cohort_distance_summary"))
           )
         ),
         column(
           width = 8,
           plot_card(
-            "Cohort distribution",
-            "A descriptive view of the selected patient-level variable.",
+            "Pairwise distance by cohort",
+            "Box plots compare the selected cell-type distance across the chosen metadata stratification.",
             "cohort_plot",
             "save_cohort_plot",
             height = "470px"
@@ -505,7 +509,7 @@ fluidPage(
     ),
 
     tabPanel(
-      "Quantile Distances",
+      "3-Way Interactions",
       p(
         "Inspect spatial patterns and distance matrices within quantile-defined tissue regions. This view remains descriptive and does not fit regression models.",
         class = "section-intro"
@@ -545,24 +549,101 @@ fluidPage(
     ),
 
     tabPanel(
-      "About",
-      app_card(
-        "About MI-SPACE",
-        NULL,
-        tags$img(src = "logo.png", class = "about-logo", alt = "MI-SPACE logo"),
-        p(
-          "MI-SPACE is an interdisciplinary group of faculty and students at the University of Michigan developing Multiplex Imaging based Spatial Analytic tools for discovery of cellular interactions in the tumor microenvironment."
-        ),
-        uiOutput("tab"),
-        div(
-          class = "team-grid",
-          div(class = "team-member", tags$img(src = "maria.png", alt = "Maria Masotti"), strong("Maria Masotti, PhD")),
-          div(class = "team-member", tags$img(src = "joel.png", alt = "Joel Eliason"), strong("Joel Eliason")),
-          div(class = "team-member", tags$img(src = "veera.png", alt = "Veera Baladandayuthapani"), strong("Veera Baladandayuthapani, PhD")),
-          div(class = "team-member", tags$img(src = "nate.png", alt = "Nate Osher"), strong("Nate Osher")),
-          div(class = "team-member", tags$img(src = "arvind.png", alt = "Arvind Rao"), strong("Arvind Rao, PhD"))
+        "About",
+        app_card(
+            "About DIMPLE",
+            NULL,
+            
+            p(
+                "DIMPLE was developed by the MI-SPACE team ",
+                tags$a(
+                    "learn more about MI-SPACE here",
+                    href = "https://sites.google.com/umich.edu/veerab/mi-space?authuser=0",
+                    target = "_blank"
+                ),
+                "."
+            ),
+            
+            p(
+                "To read more about the DIMPLE methodology, see ",
+                tags$a(
+                    "the published methodology paper",
+                    href = "https://www.sciencedirect.com/science/article/pii/S2666389923002714",
+                    target = "_blank"
+                ),
+                ". Additional documentation, including a book chapter, will be linked here when available."
+            ),
+            
+            p(
+                "The source code for DIMPLE is available on ",
+                tags$a(
+                    "GitHub",
+                    href = "https://github.com/bayesrx/DIMPLE",
+                    target = "_blank"
+                ),
+                "."
+            ),
+            
+            p(
+                "For questions or issues running the app, contact ",
+                tags$a(
+                    "Michael Kleinsasser",
+                    href = "mailto:mkleinsa@umich.edu"
+                ),
+                "."
+            ),
+            
+            h3("Development team"),
+            
+            div(
+                class = "team-grid",
+                
+                div(
+                    class = "team-member",
+                    tags$img(src = "maria.png", alt = "Maria Masotti"),
+                    strong("Maria Masotti, PhD")
+                ),
+                
+                div(
+                    class = "team-member",
+                    tags$img(src = "joel.png", alt = "Joel Eliason"),
+                    strong("Joel Eliason")
+                ),
+                
+                div(
+                    class = "team-member",
+                    tags$img(src = "veera.png", alt = "Veera Baladandayuthapani"),
+                    strong("Veera Baladandayuthapani, PhD")
+                ),
+                
+                div(
+                    class = "team-member",
+                    tags$img(src = "nate.png", alt = "Nate Osher"),
+                    strong("Nate Osher")
+                ),
+                
+                div(
+                    class = "team-member",
+                    tags$img(src = "arvind.png", alt = "Arvind Rao"),
+                    strong("Arvind Rao, PhD")
+                ),
+                
+                div(
+                    class = "team-member",
+                    strong("Michael Kleinsasser")
+                ),
+                
+                div(
+                    class = "team-member",
+                    strong("Nick")
+                ),
+                
+                div(
+                    class = "team-member",
+                    strong("Andrew")
+                )
+            )
         )
-      )
     )
   )
 )

@@ -135,40 +135,6 @@ function(input, output, session) {
       selected = first_slide
     )
 
-    if (!is.null(exp$metadata)) {
-      metadata_names <- names(exp$metadata)
-      identifier_names <- intersect(c("slide_id", "patient_id"), metadata_names)
-      variable_choices <- setdiff(metadata_names, identifier_names)
-      if (length(variable_choices) == 0) variable_choices <- metadata_names
-
-      numeric_choices <- variable_choices[vapply(exp$metadata[variable_choices], is.numeric, logical(1))]
-      default_variable <- if (length(numeric_choices) > 0) numeric_choices[[1]] else variable_choices[[1]]
-
-      group_choices <- variable_choices[vapply(
-        exp$metadata[variable_choices],
-        function(x) {
-          n_unique <- dplyr::n_distinct(x[!is.na(x)])
-          is.factor(x) || is.character(x) || is.logical(x) || n_unique <= 10
-        },
-        logical(1)
-      )]
-
-      updateSelectInput(
-        session,
-        inputId = "cohort_variable",
-        label = "Variable",
-        choices = variable_choices,
-        selected = default_variable
-      )
-      updateSelectInput(
-        session,
-        inputId = "cohort_group",
-        label = "Optional stratification",
-        choices = c("None" = "", group_choices),
-        selected = ""
-      )
-    }
-
     exp
   })
 
@@ -289,7 +255,8 @@ function(input, output, session) {
   )
 
   cohort_data <- reactive({
-    exp <- experiment()
+    exp <- computed_experiment()
+    req(exp)
     req(exp$metadata)
 
     metadata <- as.data.frame(exp$metadata)
@@ -299,20 +266,127 @@ function(input, output, session) {
     metadata
   })
 
+  cohort_pair_table <- reactive({
+    exp <- computed_experiment()
+    req(exp)
+    req(!is.null(exp$dist_metric_name))
+
+    distances <- DIMPLE::dist_to_df(exp, reduce_symmetric = TRUE) %>%
+      dplyr::mutate(
+        type1 = as.character(type1),
+        type2 = as.character(type2)
+      ) %>%
+      dplyr::filter(type1 != type2) %>%
+      dplyr::distinct(type1, type2) %>%
+      dplyr::arrange(type1, type2) %>%
+      dplyr::mutate(
+        pair_id = as.character(dplyr::row_number()),
+        pair_label = paste(type1, type2, sep = " - ")
+      )
+
+    distances
+  })
+
+  observe({
+    exp <- computed_experiment()
+    req(exp)
+
+    if (!is.null(exp$metadata)) {
+      metadata_names <- names(exp$metadata)
+      identifier_names <- intersect(c("slide_id", "patient_id"), metadata_names)
+      variable_choices <- setdiff(metadata_names, identifier_names)
+
+      group_choices <- variable_choices[vapply(
+        exp$metadata[variable_choices],
+        function(x) {
+          values <- x[!is.na(x)]
+          n_unique <- dplyr::n_distinct(values)
+          is.factor(x) || is.character(x) || is.logical(x) || n_unique <= 10
+        },
+        logical(1)
+      )]
+
+      current_group <- isolate(input$cohort_group)
+      selected_group <- if (!is.null(current_group) && current_group %in% group_choices) {
+        current_group
+      } else if (length(group_choices) > 0) {
+        group_choices[[1]]
+      } else {
+        ""
+      }
+
+      updateSelectInput(
+        session,
+        inputId = "cohort_group",
+        label = "Stratify by",
+        choices = c("None" = "", group_choices),
+        selected = selected_group
+      )
+    }
+
+    if (!is.null(exp$dist_metric_name)) {
+      pairs <- cohort_pair_table()
+      if (nrow(pairs) > 0) {
+        pair_choices <- stats::setNames(pairs$pair_id, pairs$pair_label)
+        current_pair <- isolate(input$cohort_pair)
+        selected_pair <- if (!is.null(current_pair) && current_pair %in% pairs$pair_id) {
+          current_pair
+        } else {
+          pairs$pair_id[[1]]
+        }
+
+        updateSelectInput(
+          session,
+          inputId = "cohort_pair",
+          label = "Cell-type pair",
+          choices = pair_choices,
+          selected = selected_pair
+        )
+      } else {
+        updateSelectInput(
+          session,
+          inputId = "cohort_pair",
+          label = "Cell-type pair",
+          choices = character(0),
+          selected = character(0)
+        )
+      }
+    }
+  })
+
   output$cohort_notice <- renderUI({
-    exp <- experiment()
+    exp <- computed_experiment()
+    req(exp)
+
     if (is.null(exp$metadata)) {
-      div(
+      return(div(
         class = "notice",
         strong("No cohort metadata is attached to this experiment."),
         tags$br(),
-        "The image exploration tab is still available, but cohort summaries require metadata."
+        "Cohort comparisons require slide- or patient-level metadata."
+      ))
+    }
+
+    if (is.null(exp$dist_metric_name)) {
+      return(div(
+        class = "notice",
+        strong("No distance matrices are available."),
+        tags$br(),
+        "Use the Compute Distances tab to generate pairwise distances before viewing cohort summaries."
+      ))
+    }
+
+    pairs <- cohort_pair_table()
+    if (nrow(pairs) == 0) {
+      div(
+        class = "notice",
+        "No between-cell-type distance pairs are available in this experiment."
       )
     }
   })
 
   output$cohort_overview <- renderUI({
-    exp <- experiment()
+    exp <- computed_experiment()
     req(exp$metadata)
     cohort <- cohort_data()
     n_patients <- if ("patient_id" %in% names(exp$metadata)) {
@@ -334,137 +408,135 @@ function(input, output, session) {
   })
 
   output$metadata_preview <- renderTable({
-    exp <- experiment()
+    exp <- computed_experiment()
     req(exp$metadata)
     utils::head(exp$metadata, 8)
   }, striped = FALSE, bordered = FALSE, spacing = "s", rownames = FALSE)
 
-  output$cohort_variable_summary <- renderTable({
-    data <- cohort_data()
-    req(input$cohort_variable)
-    req(input$cohort_variable %in% names(data))
+  cohort_distance_data <- reactive({
+    exp <- computed_experiment()
+    req(exp)
+    req(exp$metadata)
+    req(!is.null(exp$dist_metric_name))
+    req(input$cohort_pair)
 
-    x <- data[[input$cohort_variable]]
-    n_nonmissing <- sum(!is.na(x))
-    n_missing <- sum(is.na(x))
+    pairs <- cohort_pair_table()
+    pair <- pairs[pairs$pair_id == input$cohort_pair, , drop = FALSE]
+    req(nrow(pair) == 1)
 
-    if (is.numeric(x)) {
-      if (n_nonmissing == 0) {
-        return(data.frame(Statistic = c("Non-missing", "Missing"), Value = c(0, n_missing)))
+    grouping_var <- input$cohort_group
+    grouping_valid <- !is.null(grouping_var) && nzchar(grouping_var) && grouping_var %in% names(exp$metadata)
+
+    data <- DIMPLE::dist_to_df(exp, reduce_symmetric = TRUE) %>%
+      dplyr::mutate(
+        type1 = as.character(type1),
+        type2 = as.character(type2)
+      ) %>%
+      dplyr::filter(
+        type1 == pair$type1[[1]],
+        type2 == pair$type2[[1]],
+        is.finite(dist)
+      )
+
+    if ("patient_id" %in% names(data)) {
+      if (grouping_valid) {
+        data <- data %>%
+          dplyr::filter(!is.na(.data[[grouping_var]])) %>%
+          dplyr::group_by(patient_id, .data[[grouping_var]]) %>%
+          dplyr::summarise(dist = mean(dist, na.rm = TRUE), .groups = "drop")
+      } else {
+        data <- data %>%
+          dplyr::group_by(patient_id) %>%
+          dplyr::summarise(dist = mean(dist, na.rm = TRUE), .groups = "drop")
       }
-
-      q <- stats::quantile(x, probs = c(0.25, 0.75), na.rm = TRUE, names = FALSE)
-      values <- c(
-        n_nonmissing,
-        n_missing,
-        mean(x, na.rm = TRUE),
-        stats::sd(x, na.rm = TRUE),
-        stats::median(x, na.rm = TRUE),
-        q[[1]],
-        q[[2]],
-        min(x, na.rm = TRUE),
-        max(x, na.rm = TRUE)
-      )
-
-      data.frame(
-        Statistic = c("Non-missing", "Missing", "Mean", "SD", "Median", "Q1", "Q3", "Min", "Max"),
-        Value = c(
-          as.character(values[1:2]),
-          format(round(values[3:9], 2), trim = TRUE, scientific = FALSE)
-        ),
-        check.names = FALSE
-      )
+      attr(data, "observation_unit") <- "patients"
     } else {
-      x_chr <- as.character(x)
-      x_chr[is.na(x_chr) | x_chr == ""] <- "Missing"
-      counts <- sort(table(x_chr), decreasing = TRUE)
-      data.frame(
-        Level = names(counts),
-        N = as.integer(counts),
-        Percent = paste0(round(100 * as.integer(counts) / sum(counts), 1), "%"),
-        check.names = FALSE
+      attr(data, "observation_unit") <- "slides"
+    }
+
+    attr(data, "type1") <- pair$type1[[1]]
+    attr(data, "type2") <- pair$type2[[1]]
+    attr(data, "grouping_var") <- if (grouping_valid) grouping_var else NULL
+    data
+  })
+
+  output$cohort_distance_summary <- renderTable({
+    data <- cohort_distance_data()
+    validate(need(nrow(data) > 0, "No distance observations are available for this pair."))
+    grouping_var <- attr(data, "grouping_var")
+    observation_unit <- attr(data, "observation_unit")
+
+    summarize_distances <- function(df) {
+      q <- stats::quantile(df$dist, probs = c(0.25, 0.75), na.rm = TRUE, names = FALSE)
+      dplyr::tibble(
+        N = nrow(df),
+        Mean = mean(df$dist, na.rm = TRUE),
+        SD = stats::sd(df$dist, na.rm = TRUE),
+        Median = stats::median(df$dist, na.rm = TRUE),
+        Q1 = q[[1]],
+        Q3 = q[[2]]
       )
     }
+
+    if (!is.null(grouping_var)) {
+      result <- data %>%
+        dplyr::group_by(.data[[grouping_var]]) %>%
+        dplyr::group_modify(~ summarize_distances(.x)) %>%
+        dplyr::ungroup()
+      names(result)[[1]] <- grouping_var
+    } else {
+      result <- summarize_distances(data)
+    }
+
+    numeric_cols <- vapply(result, is.numeric, logical(1))
+    numeric_names <- names(result)[numeric_cols]
+    numeric_names <- setdiff(numeric_names, "N")
+    result[numeric_names] <- lapply(result[numeric_names], function(x) round(x, 3))
+    names(result)[names(result) == "N"] <- paste0("N ", observation_unit)
+    result
   }, striped = FALSE, bordered = FALSE, spacing = "s", rownames = FALSE)
 
   cohort_plot <- function() {
-    data <- cohort_data()
-    req(input$cohort_variable)
-    req(input$cohort_variable %in% names(data))
+    exp <- computed_experiment()
+    data <- cohort_distance_data()
+    type1 <- attr(data, "type1")
+    type2 <- attr(data, "type2")
+    grouping_var <- attr(data, "grouping_var")
+    observation_unit <- attr(data, "observation_unit")
 
-    variable <- input$cohort_variable
-    group <- input$cohort_group
-    x <- data[[variable]]
-    group_is_valid <- !is.null(group) && nzchar(group) && group %in% names(data) && group != variable
+    validate(need(nrow(data) > 0, "No distance observations are available for this pair."))
 
-    if (is.numeric(x)) {
-      plot_df <- data.frame(value = x)
+    if (!is.null(grouping_var)) {
+      plot_df <- data %>%
+        dplyr::filter(!is.na(.data[[grouping_var]])) %>%
+        dplyr::mutate(.cohort_group = as.factor(.data[[grouping_var]]))
 
-      if (group_is_valid) {
-        plot_df$group <- as.factor(data[[group]])
-        plot_df <- plot_df[!is.na(plot_df$value) & !is.na(plot_df$group), , drop = FALSE]
+      validate(need(nrow(plot_df) > 0, "No observations are available for this stratification."))
 
-        ggplot(plot_df, aes(x = group, y = value, fill = group)) +
-          geom_boxplot(width = 0.58, alpha = 0.82, outlier.shape = NA) +
-          geom_jitter(width = 0.11, alpha = 0.35, size = 1.8, colour = "#294656") +
-          scale_fill_viridis_d(option = "C", end = 0.82) +
-          labs(
-            title = paste(variable, "by", group),
-            subtitle = paste(format(nrow(plot_df), big.mark = ","), "patient-level observations"),
-            x = group,
-            y = variable
-          ) +
-          guides(fill = "none")
-      } else {
-        plot_df$cohort <- factor("All patients")
-        plot_df <- plot_df[!is.na(plot_df$value), , drop = FALSE]
-
-        ggplot(plot_df, aes(x = cohort, y = value)) +
-          geom_boxplot(width = 0.34, fill = "#4f889d", colour = "#244b60", alpha = 0.86, outlier.shape = NA) +
-          geom_jitter(width = 0.08, alpha = 0.38, size = 1.9, colour = "#294656") +
-          labs(
-            title = variable,
-            subtitle = paste(format(nrow(plot_df), big.mark = ","), "patient-level observations"),
-            x = NULL,
-            y = variable
-          )
-      }
+      ggplot(plot_df, aes(x = .cohort_group, y = dist, fill = .cohort_group)) +
+        geom_boxplot(width = 0.58, alpha = 0.82, outlier.shape = NA) +
+        geom_jitter(width = 0.11, alpha = 0.35, size = 1.8, colour = "#294656") +
+        scale_fill_viridis_d(option = "C", end = 0.82) +
+        labs(
+          title = paste(type1, "and", type2, "distance by", grouping_var),
+          subtitle = paste(format(nrow(plot_df), big.mark = ","), observation_unit, "shown"),
+          x = grouping_var,
+          y = paste0("Distance", if (!is.null(exp$dist_metric_name)) paste0(" (", exp$dist_metric_name, ")") else "")
+        ) +
+        guides(fill = "none")
     } else {
-      plot_df <- data.frame(category = as.character(x), stringsAsFactors = FALSE)
-      plot_df$category[is.na(plot_df$category) | plot_df$category == ""] <- "Missing"
+      plot_df <- data %>%
+        dplyr::mutate(.cohort_group = factor("All observations"))
 
-      if (group_is_valid) {
-        plot_df$group <- as.factor(data[[group]])
-        plot_df <- plot_df[!is.na(plot_df$group), , drop = FALSE]
-
-        ggplot(plot_df, aes(x = category, fill = group)) +
-          geom_bar(position = "dodge", width = 0.72) +
-          scale_fill_viridis_d(option = "C", end = 0.82) +
-          coord_flip() +
-          labs(
-            title = paste(variable, "by", group),
-            subtitle = "Patient-level counts",
-            x = NULL,
-            y = "Patients",
-            fill = group
-          )
-      } else {
-        counts <- as.data.frame(table(plot_df$category), stringsAsFactors = FALSE)
-        names(counts) <- c("category", "n")
-        counts$category <- reorder(counts$category, counts$n)
-
-        ggplot(counts, aes(x = category, y = n)) +
-          geom_col(width = 0.7, fill = "#4f889d") +
-          geom_text(aes(label = n), hjust = -0.18, size = 3.7, colour = "#405a69") +
-          coord_flip(clip = "off") +
-          scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
-          labs(
-            title = variable,
-            subtitle = "Patient-level counts",
-            x = NULL,
-            y = "Patients"
-          )
-      }
+      ggplot(plot_df, aes(x = .cohort_group, y = dist)) +
+        geom_boxplot(width = 0.34, fill = "#4f889d", colour = "#244b60", alpha = 0.86, outlier.shape = NA) +
+        geom_jitter(width = 0.08, alpha = 0.38, size = 1.9, colour = "#294656") +
+        labs(
+          title = paste("Distance between", type1, "and", type2),
+          subtitle = paste(format(nrow(plot_df), big.mark = ","), observation_unit, "shown"),
+          x = NULL,
+          y = paste0("Distance", if (!is.null(exp$dist_metric_name)) paste0(" (", exp$dist_metric_name, ")") else "")
+        )
     }
   }
 
@@ -473,7 +545,7 @@ function(input, output, session) {
   })
 
   output$save_cohort_plot <- downloadHandler(
-    filename = "cohort_summary.pdf",
+    filename = "cohort_pairwise_distance.pdf",
     content = function(file) {
       ggsave(file, plot = cohort_plot(), width = 8, height = 6)
     }
