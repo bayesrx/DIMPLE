@@ -36,8 +36,15 @@ fluidPage(
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
     tags$style(HTML("
       body {
-        background: #f4f7fa;
-        color: #263746;
+        background: #f7f8fa;
+        color: #00274C;
+      }
+      a {
+        color: #00274C;
+      }
+      a:hover,
+      a:focus {
+        color: #001F3D;
       }
       .container-fluid {
         max-width: 1500px;
@@ -48,9 +55,9 @@ fluidPage(
         margin: 20px 0 18px 0;
         padding: 30px 34px;
         border-radius: 16px;
-        background: linear-gradient(120deg, #12324a 0%, #245a75 62%, #2f7785 100%);
+        background: #00274C;
         color: white;
-        box-shadow: 0 10px 30px rgba(22, 50, 79, 0.16);
+        box-shadow: 0 10px 30px rgba(0, 39, 76, 0.18);
       }
       .dimple-hero .eyebrow {
         display: inline-block;
@@ -59,7 +66,8 @@ fluidPage(
         font-weight: 700;
         letter-spacing: 0.12em;
         text-transform: uppercase;
-        opacity: 0.78;
+        color: #FFCB05;
+        opacity: 1;
       }
       .dimple-hero h1 {
         margin: 0;
@@ -88,22 +96,22 @@ fluidPage(
       .nav-tabs > li > a {
         margin: 0;
         padding: 10px 16px;
-        border: 1px solid #d8e1e8;
+        border: 1px solid #c8d1da;
         border-radius: 999px;
         background: white;
-        color: #496274;
+        color: #00274C;
         font-weight: 600;
       }
       .nav-tabs > li > a:hover {
-        border-color: #9eb6c5;
-        background: #eef4f7;
+        border-color: #00274C;
+        background: #f5f1dc;
       }
       .nav-tabs > li.active > a,
       .nav-tabs > li.active > a:hover,
       .nav-tabs > li.active > a:focus {
-        border: 1px solid #245a75;
-        background: #245a75;
-        color: white;
+        border: 1px solid #FFCB05;
+        background: #FFCB05;
+        color: #00274C;
       }
       .tab-content {
         padding-top: 2px;
@@ -122,13 +130,13 @@ fluidPage(
       }
       .dimple-card-header h3 {
         margin: 0;
-        color: #16324f;
+        color: #00274C;
         font-size: 18px;
         font-weight: 700;
       }
       .card-subtitle {
         margin: 5px 0 0 0;
-        color: #6d7e8a;
+        color: #5a6a78;
         font-size: 13px;
         line-height: 1.45;
       }
@@ -136,7 +144,7 @@ fluidPage(
         padding: 18px 20px 20px 20px;
       }
       .control-label {
-        color: #314b5c;
+        color: #00274C;
         font-size: 13px;
         font-weight: 700;
       }
@@ -146,8 +154,8 @@ fluidPage(
         box-shadow: none;
       }
       .form-control:focus {
-        border-color: #4f889d;
-        box-shadow: 0 0 0 2px rgba(79, 136, 157, 0.12);
+        border-color: #00274C;
+        box-shadow: 0 0 0 2px rgba(0, 39, 76, 0.12);
       }
       .btn-primary,
       .btn-default {
@@ -155,18 +163,24 @@ fluidPage(
         font-weight: 600;
       }
       .btn-primary {
-        border-color: #246078;
-        background: #246078;
+        border-color: #00274C;
+        background: #00274C;
       }
       .btn-primary:hover,
       .btn-primary:focus {
-        border-color: #194b60;
-        background: #194b60;
+        border-color: #001F3D;
+        background: #001F3D;
       }
       .btn-default {
         border-color: #cbd8e0;
-        color: #355466;
+        color: #00274C;
         background: #fff;
+      }
+      .btn-default:hover,
+      .btn-default:focus {
+        border-color: #FFCB05;
+        color: #00274C;
+        background: #fff8d6;
       }
       .upload-or {
         margin: 14px 0;
@@ -196,8 +210,8 @@ fluidPage(
         margin-top: 16px;
         padding: 12px 14px;
         border-radius: 10px;
-        background: #eef6f4;
-        color: #315f58;
+        background: #fff8d6;
+        color: #00274C;
         font-size: 13px;
       }
       .metric-grid {
@@ -216,7 +230,7 @@ fluidPage(
       }
       .metric-label {
         display: block;
-        color: #718491;
+        color: #5a6a78;
         font-size: 12px;
         font-weight: 700;
         letter-spacing: .04em;
@@ -225,7 +239,7 @@ fluidPage(
       .metric-value {
         display: block;
         margin-top: 5px;
-        color: #16324f;
+        color: #00274C;
         font-size: 27px;
         font-weight: 700;
       }
@@ -242,7 +256,7 @@ fluidPage(
       }
       .section-intro {
         margin-bottom: 18px;
-        color: #617783;
+        color: #4d5f6f;
         line-height: 1.55;
       }
       .notice {
@@ -250,14 +264,14 @@ fluidPage(
         border: 1px solid #d8e5eb;
         border-radius: 10px;
         background: #f7fafb;
-        color: #536d7c;
+        color: #40566a;
       }
       .table-scroll {
         overflow-x: auto;
       }
       .table > thead > tr > th {
         border-bottom: 1px solid #dce5eb;
-        color: #48606f;
+        color: #00274C;
         font-size: 12px;
         text-transform: uppercase;
         letter-spacing: .03em;
@@ -291,7 +305,7 @@ fluidPage(
       .team-member strong {
         display: block;
         margin-top: 9px;
-        color: #294656;
+        color: #00274C;
         font-size: 13px;
       }
       @media (max-width: 991px) {
@@ -310,9 +324,9 @@ fluidPage(
 
   div(
     class = "dimple-hero",
-    span("Multiplex spatial imaging", class = "eyebrow"),
+    span("DIMPLE: DIstance Matrices for MultiPLEx imaging", class = "eyebrow"),
     h1("DIMPLE"),
-    p("DIstance Matrices for MultiPLEx imaging — explore spatial cell patterns, summarize cohort characteristics, and inspect quantile-specific relationships without leaving the browser.")
+    p("Explore multiplex imaging experiments, visualize cell locations and intensity surfaces, compare cohort-level distance summaries, compute and export distance matrices, and inspect quantile-defined three-way spatial interactions—all in the browser.")
   ),
 
   tabsetPanel(
