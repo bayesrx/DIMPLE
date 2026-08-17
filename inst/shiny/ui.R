@@ -65,7 +65,7 @@ fluidPage(
         font-size: 12px;
         font-weight: 700;
         letter-spacing: 0.12em;
-        text-transform: uppercase;
+        text-transform: none;
         color: #FFCB05;
         opacity: 1;
       }
@@ -333,7 +333,7 @@ fluidPage(
     id = "main_tabs",
 
     tabPanel(
-      "Explore Spatial Cell Patterns",
+      "Pairwise spatial cellular interactions",
       fluidRow(
         column(
           width = 4,
@@ -406,60 +406,7 @@ fluidPage(
     ),
 
     tabPanel(
-      "Cohort Summary",
-      p(
-        "Compare pairwise cell-type distances across cohort subgroups defined by the metadata attached to the experiment.",
-        class = "section-intro"
-      ),
-      uiOutput("cohort_notice"),
-      uiOutput("cohort_overview"),
-      fluidRow(
-        column(
-          width = 4,
-          app_card(
-            "Choose a cell-type pair",
-            "Select the pairwise distance to summarize and a metadata variable for stratification.",
-            selectInput(
-              "cohort_pair",
-              "Cell-type pair",
-              choices = ""
-            ),
-            selectInput(
-              "cohort_group",
-              "Stratify by",
-              choices = c("None" = "")
-            ),
-            p(
-              "When patient_id is available, distances from multiple slides are averaged within patient before plotting to avoid counting the same patient multiple times.",
-              class = "helper-text"
-            )
-          ),
-          app_card(
-            "Distance summary",
-            "Summary statistics for the selected pair, overall or within the chosen cohort strata.",
-            div(class = "table-scroll", tableOutput("cohort_distance_summary"))
-          )
-        ),
-        column(
-          width = 8,
-          plot_card(
-            "Pairwise distance by cohort",
-            "Box plots compare the selected cell-type distance across the chosen metadata stratification.",
-            "cohort_plot",
-            "save_cohort_plot",
-            height = "470px"
-          ),
-          app_card(
-            "Metadata preview",
-            "First rows of the metadata attached to the experiment.",
-            div(class = "table-scroll", tableOutput("metadata_preview"))
-          )
-        )
-      )
-    ),
-
-    tabPanel(
-      "Compute Distances",
+      "Compute spatial distances",
       p(
         "Compute cell-type distance matrices for the loaded MltplxExperiment. For large experiments, this calculation may take several minutes; running DIMPLE locally is recommended for computationally intensive analyses.",
         class = "section-intro"
@@ -521,9 +468,62 @@ fluidPage(
         )
       )
     ),
+    
+    tabPanel(
+        "Cohort-level summary",
+        p(
+            "Compare pairwise cell-type distances across cohort subgroups defined by the metadata attached to the experiment.",
+            class = "section-intro"
+        ),
+        uiOutput("cohort_notice"),
+        uiOutput("cohort_overview"),
+        fluidRow(
+            column(
+                width = 4,
+                app_card(
+                    "Choose a cell-type pair",
+                    "Select the pairwise distance to summarize and a metadata variable for stratification.",
+                    selectInput(
+                        "cohort_pair",
+                        "Cell-type pair",
+                        choices = ""
+                    ),
+                    selectInput(
+                        "cohort_group",
+                        "Stratify by",
+                        choices = c("None" = "")
+                    ),
+                    p(
+                        "When patient_id is available, distances from multiple slides are averaged within patient before plotting to avoid counting the same patient multiple times.",
+                        class = "helper-text"
+                    )
+                ),
+                app_card(
+                    "Distance summary",
+                    "Summary statistics for the selected pair, overall or within the chosen cohort strata.",
+                    div(class = "table-scroll", tableOutput("cohort_distance_summary"))
+                )
+            ),
+            column(
+                width = 8,
+                plot_card(
+                    "Pairwise distance by cohort",
+                    "Box plots compare the selected cell-type distance across the chosen metadata stratification.",
+                    "cohort_plot",
+                    "save_cohort_plot",
+                    height = "470px"
+                ),
+                app_card(
+                    "Metadata preview",
+                    "First rows of the metadata attached to the experiment.",
+                    div(class = "table-scroll", tableOutput("metadata_preview"))
+                )
+            )
+        )
+    ),
 
     tabPanel(
-      "3-Way Interactions",
+      "Three-way interactions",
       p(
         "Inspect spatial patterns and distance matrices within quantile-defined tissue regions. This view remains descriptive and does not fit regression models.",
         class = "section-intro"
