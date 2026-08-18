@@ -2,6 +2,8 @@ library(shiny)
 library(shinythemes)
 library(waiter)
 
+full_app <- isTRUE(getOption("DIMPLE.full_app", FALSE))
+
 app_card <- function(title, subtitle = NULL, ..., class = NULL) {
   div(
     class = paste(c("dimple-card", class), collapse = " "),
@@ -266,6 +268,24 @@ fluidPage(
         background: #f7fafb;
         color: #40566a;
       }
+      .compute-disabled {
+        opacity: 0.42;
+        filter: grayscale(0.75);
+      }
+      .compute-disabled,
+      .compute-disabled * {
+        pointer-events: none !important;
+        user-select: none;
+      }
+      .local-run-code {
+        margin: 12px 0 0 0;
+        padding: 12px 14px;
+        border: 1px solid #d8e5eb;
+        border-radius: 8px;
+        background: #f5f7f9;
+        color: #16324f;
+        white-space: pre-wrap;
+      }
       .table-scroll {
         overflow-x: auto;
       }
@@ -408,62 +428,117 @@ fluidPage(
     tabPanel(
       "Compute spatial distances",
       p(
-        "Compute cell-type distance matrices for the loaded MltplxExperiment. For large experiments, this calculation may take several minutes; running DIMPLE locally is recommended for computationally intensive analyses.",
+        "Build or update the active DIMPLE experiment, compute spatial distance metrics, and export the updated results. This tab is for processing only; visual summaries are available in the other tabs.",
         class = "section-intro"
       ),
-      fluidRow(
-        column(
-          width = 4,
-          app_card(
-            "Distance settings",
-            "Choose how spatial intensity distributions should be compared.",
-            uiOutput("intensity_settings"),
-            selectInput(
-              "distance_metric",
-              "Distance metric",
-              choices = c(
-                "Jensen-Shannon distance" = "jsd",
-                "Correlation" = "cor"
-              ),
-              selected = "jsd"
-            ),
-            actionButton(
-              "compute_distances",
-              "Compute distance matrices",
-              class = "btn-primary btn-block"
-            ),
-            uiOutput("distance_compute_status")
+      if (!full_app) {
+        app_card(
+          "Full processing is disabled in the online app",
+          "Raw-data quantification and spatial-distance computation can be computationally intensive. Install DIMPLE locally and run the full app in RStudio to enable these controls.",
+          p(
+            "DIMPLE and its required R package dependencies are installed automatically when the package is installed. An internet connection is required for installation and the first use of the lung cancer example; after that, the application can run locally without repeatedly downloading those resources.",
+            class = "helper-text"
           ),
-          app_card(
-            "Export distances",
-            "Download the computed cell-type distances for use in your own analyses.",
-            downloadButton(
-              "download_distances",
-              "Download distances (.CSV)",
-              class = "btn btn-default btn-block"
-            )
+          tags$pre(
+            class = "local-run-code",
+            'install.packages("pak")\npak::pkg_install("bayesrx/DIMPLE")\n\nlibrary(DIMPLE)\nshiny_app(full_app = TRUE)'
           )
-        ),
-        column(
-          width = 8,
-          app_card(
-            "Distance matrix preview",
-            "Preview the computed distance matrix for a selected slide.",
-            selectInput(
-              "distance_preview_slide",
-              "Slide",
-              choices = ""
-            ),
-            selectInput(
-              "distance_preview_mode",
-              "View",
-              choices = c(
-                "Heatmap" = "heatmap",
-                "Network" = "network"
+        )
+      },
+      div(
+        class = if (!full_app) "compute-disabled" else NULL,
+        fluidRow(
+          column(
+            width = 4,
+            app_card(
+              "1. Raw data",
+              "Upload both files to build a new MltplxExperiment. Leave both blank to recompute the experiment already loaded in the app.",
+              fileInput(
+                "compute_cell_file",
+                "Cell data (CSV, TSV, XLSX)",
+                accept = c(".csv", ".tsv", ".xlsx")
               ),
-              selected = "heatmap"
+              fileInput(
+                "compute_meta_file",
+                "Metadata (CSV, TSV, XLSX)",
+                accept = c(".csv", ".tsv", ".xlsx")
+              ),
+              p(
+                "Cell data must contain ROI/slide ID, X/Y coordinates, and a cell-type annotation. Metadata must contain one row per ROI/slide and a patient or sample ID.",
+                class = "helper-text"
+              )
             ),
-            plotOutput("computed_distance_plot", height = "500px")
+            app_card(
+              "2. Column mapping",
+              "Match the required DIMPLE fields to columns in the uploaded raw files.",
+              h4("Cell data"),
+              uiOutput("compute_col_roi_id_ui"),
+              uiOutput("compute_col_x_ui"),
+              uiOutput("compute_col_y_ui"),
+              uiOutput("compute_col_cell_type_ui"),
+              tags$hr(),
+              h4("Metadata"),
+              uiOutput("compute_col_meta_roi_id_ui"),
+              uiOutput("compute_col_patient_id_ui")
+            )
+          ),
+          column(
+            width = 4,
+            app_card(
+              "3. Spatial processing",
+              "Set KDE/intensity parameters, the pairwise metric, and optional quantile-distance processing.",
+              uiOutput("distance_intensity_parameters"),
+              selectInput(
+                "distance_metric",
+                "Distance metric",
+                choices = c(
+                  "Jensen-Shannon distance" = "jsd",
+                  "Correlation" = "cor"
+                ),
+                selected = "jsd"
+              ),
+              checkboxInput(
+                "compute_quantile_distances",
+                "Compute quantile-specific distances",
+                value = TRUE
+              ),
+              conditionalPanel(
+                condition = "input.compute_quantile_distances",
+                numericInput(
+                  "compute_n_bins",
+                  "Number of quantile bins",
+                  value = 3,
+                  min = 2,
+                  max = 10,
+                  step = 1
+                ),
+                uiOutput("compute_mask_type_select")
+              ),
+              actionButton(
+                "compute_distances",
+                "Process and update experiment",
+                class = "btn-primary btn-block"
+              ),
+              uiOutput("distance_compute_status")
+            )
+          ),
+          column(
+            width = 4,
+            app_card(
+              "4. Export updated data",
+              "The processed object replaces the active experiment in this app. Export the complete object or its pairwise distance table for downstream analysis.",
+              downloadButton(
+                "download_updated_experiment",
+                "Download updated experiment (.RDS)",
+                class = "btn btn-default btn-block"
+              ),
+              br(),
+              downloadButton(
+                "download_distances",
+                "Download distances (.CSV)",
+                class = "btn btn-default btn-block"
+              )
+            )
           )
         )
       )

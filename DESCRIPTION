@@ -29,7 +29,8 @@ Imports:
     shinythemes,
     waiter,
     shinyjs,
-    digest
+    digest,
+    readxl
 Suggests: 
     covr,
     knitr,

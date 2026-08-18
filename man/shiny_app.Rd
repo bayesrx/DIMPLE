@@ -4,9 +4,11 @@
 \alias{shiny_app}
 \title{Run the DIMPLE Shiny application}
 \usage{
-shiny_app(...)
+shiny_app(full_app = TRUE, ...)
 }
 \arguments{
+\item{full_app}{Logical; if \code{TRUE}, enable the computationally intensive raw-data processing and spatial-distance workflow. Set to \code{FALSE} for lightweight/hosted deployments.}
+
 \item{...}{Additional arguments passed to \code{\link[shiny:runApp]{shiny::runApp()}}.}
 }
 \value{
@@ -18,6 +20,6 @@ Launch the Shiny application bundled with DIMPLE.
 }
 \examples{
 \dontrun{
-shiny_app()
+shiny_app(full_app = TRUE)
 }
 }

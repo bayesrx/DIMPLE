@@ -10,6 +10,8 @@ options(shiny.maxRequestSize = 100000 * 1024^2)
 
 function(input, output, session) {
 
+  full_app <- isTRUE(getOption("DIMPLE.full_app", FALSE))
+
   theme_set(
     theme_minimal(base_size = 13) +
       theme(
@@ -55,9 +57,9 @@ function(input, output, session) {
       }, logical(1)))
   }
 
-  computed_experiment <- reactiveVal(NULL)
+  experiment <- reactiveVal(NULL)
 
-  experiment <- reactive({
+  loaded_experiment <- reactive({
     if (!is.null(input$file1)) {
       inFile <- input$file1
       exp <- readRDS(inFile$datapath)
@@ -138,8 +140,16 @@ function(input, output, session) {
     exp
   })
 
+  observeEvent(loaded_experiment(), {
+    experiment(loaded_experiment())
+  }, ignoreInit = TRUE)
+
   output$data_status <- renderUI({
     exp <- experiment()
+    if (is.null(exp)) {
+      return(div(class = "notice", "No experiment is currently loaded."))
+    }
+
     div(
       class = "status-box",
       strong("Experiment ready"),
@@ -148,8 +158,30 @@ function(input, output, session) {
     )
   })
 
+  observeEvent(experiment(), {
+    exp <- experiment()
+    req(exp)
+
+    first_slide <- if (length(exp$slide_ids) > 0) exp$slide_ids[[1]] else ""
+    updateSelectInput(
+      session,
+      inputId = "slide_ids_to_plot",
+      label = "Slide",
+      choices = exp$slide_ids,
+      selected = first_slide
+    )
+    updateSelectInput(
+      session,
+      inputId = "slide_ids_to_plot_mask",
+      label = "Slide",
+      choices = exp$slide_ids,
+      selected = first_slide
+    )
+  }, ignoreInit = TRUE)
+
   output$experiment_overview <- renderUI({
     exp <- experiment()
+    req(exp)
     cell_types <- get_cell_types(exp)
     total_cells <- sum(vapply(exp$mltplx_objects, function(obj) obj$mltplx_image$ppp$n, numeric(1)))
     n_patients <- if (!is.null(exp$metadata) && "patient_id" %in% names(exp$metadata)) {
@@ -274,7 +306,7 @@ function(input, output, session) {
   )
 
   cohort_data <- reactive({
-    exp <- computed_experiment()
+    exp <- experiment()
     req(exp)
     req(exp$metadata)
 
@@ -286,7 +318,7 @@ function(input, output, session) {
   })
 
   cohort_pair_table <- reactive({
-    exp <- computed_experiment()
+    exp <- experiment()
     req(exp)
     req(!is.null(exp$dist_metric_name))
 
@@ -307,7 +339,7 @@ function(input, output, session) {
   })
 
   observe({
-    exp <- computed_experiment()
+    exp <- experiment()
     req(exp)
 
     if (!is.null(exp$metadata)) {
@@ -374,7 +406,7 @@ function(input, output, session) {
   })
 
   output$cohort_notice <- renderUI({
-    exp <- computed_experiment()
+    exp <- experiment()
     req(exp)
 
     if (is.null(exp$metadata)) {
@@ -405,7 +437,7 @@ function(input, output, session) {
   })
 
   output$cohort_overview <- renderUI({
-    exp <- computed_experiment()
+    exp <- experiment()
     req(exp$metadata)
     cohort <- cohort_data()
     n_patients <- if ("patient_id" %in% names(exp$metadata)) {
@@ -427,13 +459,13 @@ function(input, output, session) {
   })
 
   output$metadata_preview <- renderTable({
-    exp <- computed_experiment()
+    exp <- experiment()
     req(exp$metadata)
     utils::head(exp$metadata, 8)
   }, striped = FALSE, bordered = FALSE, spacing = "s", rownames = FALSE)
 
   cohort_distance_data <- reactive({
-    exp <- computed_experiment()
+    exp <- experiment()
     req(exp)
     req(exp$metadata)
     req(!is.null(exp$dist_metric_name))
@@ -516,7 +548,7 @@ function(input, output, session) {
   }, striped = FALSE, bordered = FALSE, spacing = "s", rownames = FALSE)
 
   cohort_plot <- function() {
-    exp <- computed_experiment()
+    exp <- experiment()
     data <- cohort_distance_data()
     type1 <- attr(data, "type1")
     type2 <- attr(data, "type2")
@@ -570,110 +602,337 @@ function(input, output, session) {
     }
   )
 
-  observeEvent(experiment(), {
-    exp <- experiment()
-    computed_experiment(exp)
+  read_compute_file <- function(file_input) {
+    req(file_input)
+    ext <- tolower(tools::file_ext(file_input$name))
 
-    first_slide <- if (length(exp$slide_ids) > 0) exp$slide_ids[[1]] else ""
-    updateSelectInput(
-      session,
-      inputId = "distance_preview_slide",
-      label = "Slide",
-      choices = exp$slide_ids,
-      selected = first_slide
+    if (identical(ext, "csv")) {
+      return(utils::read.csv(file_input$datapath, check.names = FALSE))
+    }
+    if (identical(ext, "tsv")) {
+      return(utils::read.delim(file_input$datapath, check.names = FALSE))
+    }
+    if (identical(ext, "xlsx")) {
+      return(as.data.frame(readxl::read_excel(file_input$datapath)))
+    }
+
+    stop("Unsupported file type. Please upload CSV, TSV, or XLSX files.", call. = FALSE)
+  }
+
+  guess_compute_col <- function(col_names, pattern) {
+    matches <- col_names[grepl(pattern, col_names, ignore.case = TRUE)]
+    if (length(matches) > 0) matches[[1]] else ""
+  }
+
+  compute_cell_data <- reactive({
+    req(input$compute_cell_file)
+    read_compute_file(input$compute_cell_file)
+  })
+
+  compute_meta_data <- reactive({
+    req(input$compute_meta_file)
+    read_compute_file(input$compute_meta_file)
+  })
+
+  output$compute_col_roi_id_ui <- renderUI({
+    req(compute_cell_data())
+    cols <- names(compute_cell_data())
+    selectInput(
+      "compute_col_roi_id",
+      "ROI / slide ID",
+      choices = c("", cols),
+      selected = guess_compute_col(cols, "image|roi|phenotype|core|slide")
     )
   })
 
-  output$intensity_settings <- renderUI({
-    exp <- computed_experiment()
-    req(exp)
+  output$compute_col_x_ui <- renderUI({
+    req(compute_cell_data())
+    cols <- names(compute_cell_data())
+    selectInput(
+      "compute_col_x",
+      "X coordinate",
+      choices = c("", cols),
+      selected = guess_compute_col(cols, "(^x$)|x.*coord|coord.*x")
+    )
+  })
 
-    if (has_intensities(exp)) {
-      div(
-        class = "status-box",
-        strong("Intensity estimates available"),
-        tags$br(),
-        paste0("Pixel size: ", exp$ps, " · Bandwidth: ", exp$bw)
+  output$compute_col_y_ui <- renderUI({
+    req(compute_cell_data())
+    cols <- names(compute_cell_data())
+    selectInput(
+      "compute_col_y",
+      "Y coordinate",
+      choices = c("", cols),
+      selected = guess_compute_col(cols, "(^y$)|y.*coord|coord.*y")
+    )
+  })
+
+  output$compute_col_cell_type_ui <- renderUI({
+    req(compute_cell_data())
+    cols <- names(compute_cell_data())
+    selectInput(
+      "compute_col_cell_type",
+      "Cell type",
+      choices = c("", cols),
+      selected = guess_compute_col(cols, "cell.*type|type|phenotype|marker|class")
+    )
+  })
+
+  output$compute_col_meta_roi_id_ui <- renderUI({
+    req(compute_meta_data())
+    cols <- names(compute_meta_data())
+    selectInput(
+      "compute_col_meta_roi_id",
+      "ROI / slide ID",
+      choices = c("", cols),
+      selected = guess_compute_col(cols, "image|roi|phenotype|core|slide")
+    )
+  })
+
+  output$compute_col_patient_id_ui <- renderUI({
+    req(compute_meta_data())
+    cols <- names(compute_meta_data())
+    selectInput(
+      "compute_col_patient_id",
+      "Patient / sample ID",
+      choices = c("", cols),
+      selected = guess_compute_col(cols, "patient|participant|subject|sample")
+    )
+  })
+
+  output$distance_intensity_parameters <- renderUI({
+    exp <- experiment()
+    ps_default <- if (!is.null(exp) && !is.null(exp$ps)) exp$ps else 30
+    bw_default <- if (!is.null(exp) && !is.null(exp$bw)) exp$bw else 40
+
+    tagList(
+      numericInput(
+        "distance_ps",
+        "Pixel size (ps)",
+        value = ps_default,
+        min = 1,
+        step = 1
+      ),
+      numericInput(
+        "distance_bw",
+        "Smoothing bandwidth (bw)",
+        value = bw_default,
+        min = 1,
+        step = 1
       )
+    )
+  })
+
+  output$compute_mask_type_select <- renderUI({
+    cell_types <- character(0)
+
+    if (!is.null(input$compute_cell_file) &&
+        !is.null(input$compute_col_cell_type) &&
+        nzchar(input$compute_col_cell_type)) {
+      cd <- compute_cell_data()
+      cell_types <- sort(unique(as.character(cd[[input$compute_col_cell_type]])))
+      cell_types <- cell_types[!is.na(cell_types) & nzchar(cell_types)]
     } else {
-      tagList(
-        div(
-          class = "notice",
-          "This experiment does not contain intensity estimates. They must be generated before distances can be computed."
-        ),
-        numericInput(
-          "distance_ps",
-          "Pixel size",
-          value = 10,
-          min = 1
-        ),
-        numericInput(
-          "distance_bw",
-          "Smoothing bandwidth",
-          value = 30,
-          min = 1
-        )
-      )
+      exp <- experiment()
+      if (!is.null(exp)) cell_types <- get_cell_types(exp)
     }
+
+    req(length(cell_types) > 0)
+    selectInput(
+      "compute_mask_type",
+      "Quantile mask cell type",
+      choices = cell_types,
+      selected = cell_types[[1]]
+    )
+  })
+
+  compute_q_probs <- reactive({
+    n <- as.integer(input$compute_n_bins)
+    breaks <- round(seq(0, 100, length.out = n + 1))
+    tibble::tibble(
+      from = breaks[-(n + 1)],
+      to = breaks[-1]
+    )
   })
 
   output$distance_compute_status <- renderUI({
-    exp <- computed_experiment()
-    req(exp)
+    exp <- experiment()
 
-    if (is.null(exp$dist_metric_name)) {
-      div(
+    if (is.null(exp)) {
+      return(div(
         class = "notice",
-        "No distance matrices are currently available."
-      )
-    } else {
-      div(
-        class = "status-box",
-        strong("Distance matrices available"),
-        tags$br(),
-        paste("Metric:", exp$dist_metric_name)
-      )
+        "No active experiment yet. Upload raw cell and metadata files here, or load an RDS experiment from the first tab."
+      ))
     }
+
+    details <- c(
+      paste(format(length(exp$slide_ids), big.mark = ","), "slides"),
+      if (!is.null(exp$ps) && !is.null(exp$bw)) paste0("ps ", exp$ps, ", bw ", exp$bw) else NULL,
+      if (!is.null(exp$dist_metric_name)) paste("metric", exp$dist_metric_name) else "no pairwise distances"
+    )
+
+    div(
+      class = "status-box",
+      strong("Active experiment"),
+      tags$br(),
+      paste(details, collapse = " · ")
+    )
   })
 
+  clear_quantile_distances <- function(exp) {
+    exp$mltplx_objects <- lapply(exp$mltplx_objects, function(obj) {
+      obj$quantile_dist <- NULL
+      obj
+    })
+    exp$qdist_mask <- NULL
+    exp$qdist_n_quantiles <- NULL
+    exp
+  }
+
   observeEvent(input$compute_distances, {
-    exp <- computed_experiment()
-    req(exp)
-    req(input$distance_metric)
+    if (!full_app) {
+      showNotification(
+        "Spatial processing is disabled in this deployment. Run shiny_app(full_app = TRUE) locally to enable it.",
+        type = "warning",
+        duration = NULL
+      )
+      return()
+    }
+
+    req(input$distance_ps, input$distance_bw, input$distance_metric)
 
     result <- tryCatch({
       withProgress(
-        message = "Computing distance matrices...",
+        message = "Processing DIMPLE experiment...",
         value = 0,
         {
-          if (!has_intensities(exp)) {
-            req(input$distance_ps)
-            req(input$distance_bw)
-            incProgress(0.2, detail = "Estimating spatial intensities")
-            exp <- DIMPLE::update_intensity(
-              exp,
-              ps = input$distance_ps,
-              bw = input$distance_bw
-            )
+          has_cell_upload <- !is.null(input$compute_cell_file)
+          has_meta_upload <- !is.null(input$compute_meta_file)
+
+          if (xor(has_cell_upload, has_meta_upload)) {
+            stop("Upload both the cell data file and metadata file, or leave both blank to update the currently loaded experiment.", call. = FALSE)
           }
 
-          incProgress(0.4, detail = "Computing pairwise distances")
+          if (has_cell_upload && has_meta_upload) {
+            cd <- compute_cell_data()
+            md <- compute_meta_data()
 
+            required_inputs <- list(
+              input$compute_col_roi_id,
+              input$compute_col_x,
+              input$compute_col_y,
+              input$compute_col_cell_type,
+              input$compute_col_meta_roi_id,
+              input$compute_col_patient_id
+            )
+            missing_required <- vapply(
+              required_inputs,
+              function(x) is.null(x) || length(x) != 1 || !nzchar(x),
+              logical(1)
+            )
+            if (any(missing_required)) {
+              stop("Select all required cell-data and metadata columns before processing.", call. = FALSE)
+            }
+            if (identical(input$compute_col_meta_roi_id, input$compute_col_patient_id)) {
+              stop("The metadata ROI/slide ID and patient/sample ID must be different columns.", call. = FALSE)
+            }
+
+            x <- suppressWarnings(as.numeric(cd[[input$compute_col_x]]))
+            y <- suppressWarnings(as.numeric(cd[[input$compute_col_y]]))
+            if (anyNA(x) || anyNA(y)) {
+              stop("The selected X and Y coordinate columns must contain numeric, non-missing values.", call. = FALSE)
+            }
+
+            marks <- factor(cd[[input$compute_col_cell_type]])
+            slide_id <- cd[[input$compute_col_roi_id]]
+            if (anyNA(marks) || anyNA(slide_id)) {
+              stop("Cell type and ROI/slide ID columns cannot contain missing values.", call. = FALSE)
+            }
+
+            metadata <- as.data.frame(md, check.names = FALSE)
+            if (!identical(input$compute_col_meta_roi_id, "slide_id") && "slide_id" %in% names(metadata)) {
+              stop("Metadata already contains a column named 'slide_id'. Select that column as the ROI/slide ID or rename it before upload.", call. = FALSE)
+            }
+            if (!identical(input$compute_col_patient_id, "patient_id") && "patient_id" %in% names(metadata)) {
+              stop("Metadata already contains a column named 'patient_id'. Select that column as the patient/sample ID or rename it before upload.", call. = FALSE)
+            }
+            names(metadata)[match(input$compute_col_meta_roi_id, names(metadata))] <- "slide_id"
+            names(metadata)[match(input$compute_col_patient_id, names(metadata))] <- "patient_id"
+            metadata <- tibble::as_tibble(metadata)
+
+            incProgress(0.35, detail = "Building experiment and estimating spatial intensities")
+            exp <- DIMPLE::new_MltplxExperiment(
+              x = x,
+              y = y,
+              marks = marks,
+              slide_id = slide_id,
+              ps = input$distance_ps,
+              bw = input$distance_bw,
+              metadata = metadata
+            )
+          } else {
+            exp <- experiment()
+            if (is.null(exp)) {
+              stop("Load an experiment or upload both raw input files before processing.", call. = FALSE)
+            }
+
+            same_intensity_settings <- has_intensities(exp) &&
+              isTRUE(all.equal(as.numeric(exp$ps), as.numeric(input$distance_ps))) &&
+              isTRUE(all.equal(as.numeric(exp$bw), as.numeric(input$distance_bw)))
+
+            if (!same_intensity_settings) {
+              incProgress(0.35, detail = "Estimating spatial intensities")
+              exp <- DIMPLE::update_intensity(
+                exp,
+                ps = input$distance_ps,
+                bw = input$distance_bw
+              )
+            } else {
+              incProgress(0.35, detail = "Using existing spatial intensities")
+            }
+          }
+
+          incProgress(0.35, detail = "Computing pairwise distances")
           if (identical(input$distance_metric, "jsd")) {
             exp <- DIMPLE::update_dist(exp, jsd)
           } else if (identical(input$distance_metric, "cor")) {
             exp <- DIMPLE::update_dist(exp, cor)
           } else {
-            stop("Unsupported distance metric.")
+            stop("Unsupported distance metric.", call. = FALSE)
           }
 
-          incProgress(0.4, detail = "Done")
+          if (isTRUE(input$compute_quantile_distances)) {
+            req(input$compute_n_bins, input$compute_mask_type)
+            incProgress(0.25, detail = "Computing quantile-specific distances")
+            if (identical(input$distance_metric, "jsd")) {
+              exp <- DIMPLE::update_qdist(
+                exp,
+                jsd,
+                input$compute_mask_type,
+                compute_q_probs(),
+                .dist_metric_name = "jsd"
+              )
+            } else {
+              exp <- DIMPLE::update_qdist(
+                exp,
+                cor,
+                input$compute_mask_type,
+                compute_q_probs(),
+                .dist_metric_name = "cor"
+              )
+            }
+          } else {
+            exp <- clear_quantile_distances(exp)
+            incProgress(0.25, detail = "Skipping quantile-specific distances")
+          }
+
+          incProgress(0.05, detail = "Updating active experiment")
+          exp
         }
       )
-      exp
     }, error = function(e) {
       showNotification(
-        paste("Unable to compute distances:", conditionMessage(e)),
+        paste("Unable to process experiment:", conditionMessage(e)),
         type = "error",
         duration = NULL
       )
@@ -681,65 +940,33 @@ function(input, output, session) {
     })
 
     if (!is.null(result)) {
-      computed_experiment(result)
+      experiment(result)
       showNotification(
-        "Distance matrices successfully computed.",
+        "Processing complete. The active experiment has been updated.",
         type = "message"
       )
     }
   })
 
-  observe({
-    exp <- computed_experiment()
-    req(exp)
-
-    current_slide <- isolate(input$distance_preview_slide)
-    selected_slide <- if (!is.null(current_slide) && current_slide %in% exp$slide_ids) {
-      current_slide
-    } else if (length(exp$slide_ids) > 0) {
-      exp$slide_ids[[1]]
-    } else {
-      ""
+  output$download_updated_experiment <- downloadHandler(
+    filename = function() {
+      paste0("DIMPLE_experiment_", format(Sys.Date(), "%Y%m%d"), ".RDS")
+    },
+    content = function(file) {
+      validate(need(full_app, "Full processing/export is disabled in this deployment."))
+      exp <- experiment()
+      req(exp)
+      saveRDS(exp, file)
     }
-
-    updateSelectInput(
-      session,
-      inputId = "distance_preview_slide",
-      label = "Slide",
-      choices = exp$slide_ids,
-      selected = selected_slide
-    )
-  })
-
-  computed_distance_plot <- function() {
-    exp <- computed_experiment()
-    req(exp)
-    req(input$distance_preview_slide)
-    req(input$distance_preview_mode)
-    validate(need(
-      !is.null(exp$dist_metric_name),
-      "Compute distance matrices to preview them here."
-    ))
-
-    plots <- DIMPLE::plot_dist_matrix(
-      exp,
-      input$distance_preview_slide,
-      mode = input$distance_preview_mode
-    )
-
-    if (is.list(plots) && length(plots) == 1) plots[[1]] else plots
-  }
-
-  output$computed_distance_plot <- renderPlot({
-    computed_distance_plot()
-  })
+  )
 
   output$download_distances <- downloadHandler(
     filename = function() {
       paste0("DIMPLE_distances_", Sys.Date(), ".csv")
     },
     content = function(file) {
-      exp <- computed_experiment()
+      validate(need(full_app, "Full processing/export is disabled in this deployment."))
+      exp <- experiment()
       req(exp)
       validate(need(
         !is.null(exp$dist_metric_name),

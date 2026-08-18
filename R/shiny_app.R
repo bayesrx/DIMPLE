@@ -2,6 +2,9 @@
 #'
 #' Launch the Shiny application bundled with DIMPLE.
 #'
+#' @param full_app Logical; if `TRUE`, enable the computationally intensive
+#'   raw-data processing and spatial-distance workflow. Set to `FALSE` for
+#'   lightweight/hosted deployments.
 #' @param ... Additional arguments passed to [shiny::runApp()].
 #'
 #' @return The value returned by [shiny::runApp()]. The function normally
@@ -10,9 +13,9 @@
 #'
 #' @examples
 #' \dontrun{
-#' shiny_app()
+#' shiny_app(full_app = TRUE)
 #' }
-shiny_app <- function(...) {
+shiny_app <- function(full_app = TRUE, ...) {
   app_dir <- system.file("shiny", package = "DIMPLE")
 
   if (!nzchar(app_dir)) {
@@ -24,7 +27,8 @@ shiny_app <- function(...) {
     shinythemes = requireNamespace("shinythemes", quietly = TRUE),
     waiter = requireNamespace("waiter", quietly = TRUE),
     shinyjs = requireNamespace("shinyjs", quietly = TRUE),
-    digest = requireNamespace("digest", quietly = TRUE)
+    digest = requireNamespace("digest", quietly = TRUE),
+    readxl = !isTRUE(full_app) || requireNamespace("readxl", quietly = TRUE)
   )
 
   if (!all(app_dependencies)) {
@@ -35,6 +39,9 @@ shiny_app <- function(...) {
       call. = FALSE
     )
   }
+
+  old_options <- options(DIMPLE.full_app = isTRUE(full_app))
+  on.exit(options(old_options), add = TRUE)
 
   shiny::runApp(appDir = app_dir, ...)
 }
