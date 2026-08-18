@@ -577,6 +577,11 @@ fluidPage(
                     "Distance summary",
                     "Summary statistics for the selected pair, overall or within the chosen cohort strata.",
                     div(class = "table-scroll", tableOutput("cohort_distance_summary"))
+                ),
+                app_card(
+                    "Metadata preview",
+                    "First rows of the metadata attached to the experiment.",
+                    div(class = "table-scroll", tableOutput("metadata_preview"))
                 )
             ),
             column(
@@ -589,9 +594,58 @@ fluidPage(
                     height = "470px"
                 ),
                 app_card(
-                    "Metadata preview",
-                    "First rows of the metadata attached to the experiment.",
-                    div(class = "table-scroll", tableOutput("metadata_preview"))
+                    "Pairwise regression screen",
+                    "Test every pairwise cell-type distance for association with a two-level patient metadata covariate. The descriptive cohort plot stays first; this inferential screen follows directly underneath it.",
+                    uiOutput("cohort_regression_notice"),
+                    fluidRow(
+                        column(
+                            width = 4,
+                            selectInput(
+                                "regression_group_factor",
+                                "Covariate to test",
+                                choices = c("Select a two-level covariate" = "")
+                            ),
+                            selectInput(
+                                "regression_covariates",
+                                "Covariates to adjust for",
+                                choices = character(0),
+                                multiple = TRUE
+                            ),
+                            selectInput(
+                                "regression_agg",
+                                "Patient-level aggregation",
+                                choices = c(
+                                    "Median" = "median",
+                                    "Mean" = "mean",
+                                    "Maximum" = "max",
+                                    "Minimum" = "min"
+                                ),
+                                selected = "median"
+                            ),
+                            selectInput(
+                                "regression_adjust_counts",
+                                "Adjust for cell-type counts",
+                                choices = c("Yes" = "yes", "No" = "no"),
+                                selected = "yes"
+                            ),
+                            p(
+                                "For patients represented by multiple slides, the selected aggregation function combines slide-level distances before each pairwise linear model is fit. P-values shown in the heatmap are FDR adjusted.",
+                                class = "helper-text"
+                            )
+                        ),
+                        column(
+                            width = 8,
+                            plotOutput("cohort_regression_heatmap", height = "520px"),
+                            div(
+                                class = "plot-actions",
+                                downloadButton(
+                                    "save_cohort_regression_heatmap",
+                                    "Download PDF",
+                                    class = "btn btn-default btn-sm"
+                                )
+                            )
+                        )
+                    )
                 )
             )
         )

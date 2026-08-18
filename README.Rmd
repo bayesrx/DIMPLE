@@ -47,6 +47,8 @@ shiny_app(full_app = TRUE)
 
 The application opens in a web browser and runs locally on your computer; keep the R session open while using it. The full local app enables raw-data quantification and spatial-distance computation that are disabled in the lightweight hosted version. An internet connection is required for installation and the first use of the lung cancer example dataset. After DIMPLE and the example data are installed or cached, the app can run locally without repeatedly downloading those resources.
 
+The Cohort-level summary tab also includes the restored pairwise regression screen below the descriptive cohort plot, with optional covariate and cell-count adjustment and an FDR-adjusted regression heatmap.
+
 ## Example
 
 Suppose we're interested in exploring the lung cancer data from the [`VectraPolarisData`](https://bioconductor.org/packages/release/data/experiment/html/VectraPolarisData.html) package. Assuming you've already installed that package, we can build a `MltplxExperiment` object, the core of `DIMPLE`, from the data as follows:

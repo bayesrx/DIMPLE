@@ -602,6 +602,202 @@ function(input, output, session) {
     }
   )
 
+  regression_metadata_variables <- reactive({
+    exp <- experiment()
+    req(exp)
+    req(exp$metadata)
+
+    metadata <- as.data.frame(exp$metadata)
+    setdiff(names(metadata), intersect(c("slide_id", "patient_id"), names(metadata)))
+  })
+
+  regression_group_choices <- reactive({
+    exp <- experiment()
+    req(exp)
+    req(exp$metadata)
+
+    variables <- regression_metadata_variables()
+    if (length(variables) == 0) {
+      return(character(0))
+    }
+
+    variables[vapply(
+      exp$metadata[variables],
+      function(x) {
+        values <- x[!is.na(x)]
+        length(values) > 0 && dplyr::n_distinct(values) == 2
+      },
+      logical(1)
+    )]
+  })
+
+  observe({
+    exp <- experiment()
+    req(exp)
+
+    if (is.null(exp$metadata)) {
+      updateSelectInput(
+        session,
+        inputId = "regression_group_factor",
+        choices = c("Select a two-level covariate" = ""),
+        selected = ""
+      )
+      updateSelectInput(
+        session,
+        inputId = "regression_covariates",
+        choices = character(0),
+        selected = character(0)
+      )
+      return()
+    }
+
+    group_choices <- regression_group_choices()
+    current_group <- isolate(input$regression_group_factor)
+    selected_group <- if (!is.null(current_group) && current_group %in% group_choices) {
+      current_group
+    } else if (length(group_choices) > 0) {
+      group_choices[[1]]
+    } else {
+      ""
+    }
+
+    updateSelectInput(
+      session,
+      inputId = "regression_group_factor",
+      label = "Covariate to test",
+      choices = c("Select a two-level covariate" = "", group_choices),
+      selected = selected_group
+    )
+  })
+
+  observe({
+    exp <- experiment()
+    req(exp)
+    req(exp$metadata)
+
+    variables <- regression_metadata_variables()
+    group_factor <- input$regression_group_factor
+    covariate_choices <- setdiff(variables, group_factor)
+    current_covariates <- isolate(input$regression_covariates)
+    selected_covariates <- intersect(current_covariates, covariate_choices)
+
+    updateSelectInput(
+      session,
+      inputId = "regression_covariates",
+      label = "Covariates to adjust for",
+      choices = covariate_choices,
+      selected = selected_covariates
+    )
+  })
+
+  output$cohort_regression_notice <- renderUI({
+    exp <- experiment()
+    req(exp)
+
+    if (is.null(exp$metadata)) {
+      return(div(
+        class = "notice",
+        strong("Regression requires patient metadata."),
+        tags$br(),
+        "Attach metadata before fitting pairwise regression models."
+      ))
+    }
+
+    if (is.null(exp$dist_metric_name)) {
+      return(div(
+        class = "notice",
+        strong("Regression requires pairwise distances."),
+        tags$br(),
+        "Compute spatial distances before fitting these models."
+      ))
+    }
+
+    if (!"patient_id" %in% names(exp$metadata)) {
+      return(div(
+        class = "notice",
+        strong("A patient_id column is required for this regression screen."),
+        tags$br(),
+        "The restored analysis aggregates repeated slides within patient before fitting each model."
+      ))
+    }
+
+    if (length(regression_group_choices()) == 0) {
+      return(div(
+        class = "notice",
+        strong("No eligible two-level covariate was found."),
+        tags$br(),
+        "The pairwise regression function currently supports a binary grouping variable."
+      ))
+    }
+
+    NULL
+  })
+
+  regression_agg_fun <- reactive({
+    switch(
+      input$regression_agg,
+      mean = base::mean,
+      max = base::max,
+      min = base::min,
+      stats::median
+    )
+  })
+
+  cohort_regression_results <- reactive({
+    exp <- experiment()
+    req(exp)
+    validate(need(!is.null(exp$metadata), "Regression requires patient metadata."))
+    validate(need(!is.null(exp$dist_metric_name), "Regression requires pairwise distances."))
+    validate(need("patient_id" %in% names(exp$metadata), "Regression requires a patient_id metadata column."))
+
+    group_factor <- input$regression_group_factor
+    validate(need(
+      !is.null(group_factor) && nzchar(group_factor) && group_factor %in% regression_group_choices(),
+      "Select a two-level covariate to test."
+    ))
+
+    covariates <- input$regression_covariates
+    covariates <- intersect(covariates, setdiff(regression_metadata_variables(), group_factor))
+    if (length(covariates) == 0) {
+      covariates <- NULL
+    }
+
+    withProgress(message = "Fitting pairwise regression models", value = 0, {
+      incProgress(0.15, detail = "Preparing patient-level distances")
+      result <- DIMPLE::lm_dist(
+        exp,
+        group_factor = group_factor,
+        agg_fun = regression_agg_fun(),
+        covariates = covariates,
+        adjust_counts = identical(input$regression_adjust_counts, "yes")
+      )
+      incProgress(0.85, detail = "Applying FDR correction")
+      result
+    })
+  })
+
+  cohort_regression_plot <- function() {
+    results <- cohort_regression_results()
+    validate(need(nrow(results) > 0, "No estimable pairwise regression results are available for these settings."))
+
+    DIMPLE::plot_dist_regression_heatmap(results, p_val_col = "p.adj") +
+      labs(
+        title = paste("Pairwise distance association with", input$regression_group_factor),
+        subtitle = "Tile color shows the regression coefficient; significance stars use FDR-adjusted p-values."
+      )
+  }
+
+  output$cohort_regression_heatmap <- renderPlot({
+    cohort_regression_plot()
+  })
+
+  output$save_cohort_regression_heatmap <- downloadHandler(
+    filename = "pairwise_distance_regression_heatmap.pdf",
+    content = function(file) {
+      ggsave(file, plot = cohort_regression_plot(), width = 9, height = 7)
+    }
+  )
+
   read_compute_file <- function(file_input) {
     req(file_input)
     ext <- tolower(tools::file_ext(file_input$name))
